@@ -3429,6 +3429,9 @@ void Init(int* argc,
   RegisterSignalHandler(SIGPIPE, SIG_IGN);
   RegisterSignalHandler(SIGINT, SignalExit, true);
   RegisterSignalHandler(SIGTERM, SignalExit, true);
+  // Block SIGPROF signals when sleeping in epoll_wait/kevent/etc.  Avoids the
+  // performance penalty of frequent EINTR wakeups when the profiler is running.
+  uv_loop_configure(uv_default_loop(), UV_LOOP_BLOCK_SIGNAL, SIGPROF);
 #endif  // __POSIX__
 
   if (!use_debug_agent) {
