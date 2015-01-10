@@ -1411,6 +1411,10 @@ static void ReportException(Environment* env,
   }
 
   fflush(stderr);
+
+  // Calls to ReportException() always immediately exit afterwards.
+  // If the CPU profiler is running, dump the output now.
+  RunTickProcessor();
 }
 
 
@@ -1843,6 +1847,7 @@ static void InitGroups(const FunctionCallbackInfo<Value>& args) {
 
 
 void Exit(const FunctionCallbackInfo<Value>& args) {
+  RunTickProcessor();
   exit(args[0]->Int32Value());
 }
 
@@ -3375,13 +3380,15 @@ void Init(int* argc,
   const char** v8_argv;
   ParseArgs(argc, argv, exec_argc, exec_argv, &v8_argc, &v8_argv);
 
-  // TODO(bnoordhuis) Intercept --prof arguments and start the CPU profiler
-  // manually?  That would give us a little more control over its runtime
-  // behavior but it could also interfere with the user's intentions in ways
-  // we fail to anticipate.  Dillema.
+  bool v8_logs_to_logfile = false;
   for (int i = 1; i < v8_argc; ++i) {
-    if (strncmp(v8_argv[i], "--prof", sizeof("--prof") - 1) == 0) {
+    if (strncmp(v8_argv[i], "--prof", sizeof("--prof") - 1) == 0)
       v8_is_profiling = true;
+    else if (strncmp(v8_argv[i], "--logfile=", sizeof("--logfile=") - 1) == 0)
+      v8_logs_to_logfile = true;
+
+    if (v8_is_profiling == true && v8_logs_to_logfile == false) {
+      ConfigureTickLogging();
       break;
     }
   }
@@ -3713,6 +3720,8 @@ int Start(int argc, char** argv) {
   CHECK_NE(node_isolate, nullptr);
   node_isolate->Dispose();
   node_isolate = nullptr;
+
+  RunTickProcessor();
   V8::Dispose();
 
   delete[] exec_argv;

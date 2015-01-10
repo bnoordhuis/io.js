@@ -78,6 +78,7 @@
 
       'dependencies': [
         'node_js2c#host',
+        'node_js2c_tick_processor#host',
         'deps/cares/cares.gyp:cares'
       ],
 
@@ -109,6 +110,7 @@
         'src/node_watchdog.cc',
         'src/node_zlib.cc',
         'src/node_i18n.cc',
+        'src/node_tick_processor.cc',
         'src/pipe_wrap.cc',
         'src/signal_wrap.cc',
         'src/smalloc.cc',
@@ -463,6 +465,42 @@
         },
       ],
     }, # end node_js2c
+    {
+      'target_name': 'node_js2c_tick_processor',
+      'type': 'none',
+      'toolsets': ['host'],
+      'actions': [
+        {
+          'action_name': 'node_js2c_tick_processor',
+          'conditions': [
+            [ 'node_shared_v8=="false"', {
+              'inputs': [
+                # Order matters.
+                'deps/v8/tools/splaytree.js',
+                'deps/v8/tools/codemap.js',
+                'deps/v8/tools/csvparser.js',
+                'deps/v8/tools/consarray.js',
+                'deps/v8/tools/profile.js',
+                'deps/v8/tools/profile_view.js',
+                'deps/v8/tools/logreader.js',
+                'deps/v8/tools/tickprocessor.js',
+                'deps/v8/tools/SourceMap.js',
+                'deps/v8/tools/tickprocessor-driver.js',
+              ],
+            }, {
+              'inputs': [],
+            }],
+          ],
+          'outputs': [ '<(SHARED_INTERMEDIATE_DIR)/node_tick_processor.h' ],
+          'action': [
+            '<(python)',
+            'tools/js2c.py',
+            '<@(_outputs)',
+            '<@(_inputs)',
+          ],
+        },
+      ],
+    },
     {
       'target_name': 'node_dtrace_header',
       'type': 'none',

@@ -242,7 +242,7 @@ NATIVE_DECLARATION = """\
 """
 
 SOURCE_DECLARATION = """\
-  const char %(id)s_native[] = { %(data)s };
+  static const char %(id)s_native[] = { %(data)s };
 """
 
 
@@ -294,6 +294,7 @@ def JS2C(source, target):
     lines = CompressScript(lines, do_jsmin)
     data = ToCArray(s, lines)
     id = os.path.basename(str(s)).split('.')[0]
+    id = id.replace('-', '_')
     if delay: id = id[:-6]
     if delay:
       delay_ids.append((id, len(lines)))

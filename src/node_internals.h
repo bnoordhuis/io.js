@@ -127,6 +127,10 @@ NO_RETURN void FatalError(const char* location, const char* message);
 
 v8::Local<v8::Value> BuildStatsObject(Environment* env, const uv_stat_t* s);
 
+// Defined in src/node_tick_processor.cc
+void ConfigureTickLogging();
+void RunTickProcessor();
+
 enum Endianness {
   kLittleEndian,  // _Not_ LITTLE_ENDIAN, clashes with endian.h.
   kBigEndian
