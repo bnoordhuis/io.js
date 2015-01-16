@@ -29,6 +29,7 @@
 #include <errno.h>
 
 #include <net/if.h>
+#include <sys/epoll.h>
 #include <sys/param.h>
 #include <sys/prctl.h>
 #include <sys/sysinfo.h>
@@ -77,13 +78,13 @@ static unsigned long read_cpufreq(unsigned int cpunum);
 int uv__platform_loop_init(uv_loop_t* loop, int default_loop) {
   int fd;
 
-  fd = uv__epoll_create1(UV__EPOLL_CLOEXEC);
+  fd = epoll_create1(UV__EPOLL_CLOEXEC);
 
   /* epoll_create1() can fail either because it's not implemented (old kernel)
    * or because it doesn't understand the EPOLL_CLOEXEC flag.
    */
   if (fd == -1 && (errno == ENOSYS || errno == EINVAL)) {
-    fd = uv__epoll_create(256);
+    fd = epoll_create(256);
 
     if (fd != -1)
       uv__cloexec(fd, 1);
@@ -109,20 +110,20 @@ void uv__platform_loop_delete(uv_loop_t* loop) {
 
 
 void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
-  struct uv__epoll_event* events;
-  struct uv__epoll_event dummy;
+  struct epoll_event* events;
+  struct epoll_event dummy;
   uintptr_t i;
   uintptr_t nfds;
 
   assert(loop->watchers != NULL);
 
-  events = (struct uv__epoll_event*) loop->watchers[loop->nwatchers];
+  events = (struct epoll_event*) loop->watchers[loop->nwatchers];
   nfds = (uintptr_t) loop->watchers[loop->nwatchers + 1];
   if (events != NULL)
     /* Invalidate events with same file descriptor */
     for (i = 0; i < nfds; i++)
-      if ((int) events[i].data == fd)
-        events[i].data = -1;
+      if ((int) events[i].data.u64 == fd)
+        events[i].data.u64 = -1;
 
   /* Remove the file descriptor from the epoll.
    * This avoids a problem where the same file description remains open
@@ -131,17 +132,18 @@ void uv__platform_invalidate_fd(uv_loop_t* loop, int fd) {
    * We pass in a dummy epoll_event, to work around a bug in old kernels.
    */
   if (loop->backend_fd >= 0)
-    uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy);
+    epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, &dummy);
 }
 
 
 void uv__io_poll(uv_loop_t* loop, int timeout) {
-  struct uv__epoll_event events[1024];
-  struct uv__epoll_event* pe;
-  struct uv__epoll_event e;
+  struct epoll_event events[1024];
+  struct epoll_event* pe;
+  struct epoll_event e;
   QUEUE* q;
   uv__io_t* w;
-  uint64_t sigmask;
+  sigset_t* psigmask;
+  sigset_t sigmask;
   uint64_t base;
   uint64_t diff;
   int nevents;
@@ -168,7 +170,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     assert(w->fd < (int) loop->nwatchers);
 
     e.events = w->pevents;
-    e.data = w->fd;
+    e.data.u64 = w->fd;
 
     if (w->events == 0)
       op = UV__EPOLL_CTL_ADD;
@@ -178,40 +180,39 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     /* XXX Future optimization: do EPOLL_CTL_MOD lazily if we stop watching
      * events, skip the syscall and squelch the events after epoll_wait().
      */
-    if (uv__epoll_ctl(loop->backend_fd, op, w->fd, &e)) {
+    if (epoll_ctl(loop->backend_fd, op, w->fd, &e)) {
       if (errno != EEXIST)
         abort();
 
       assert(op == UV__EPOLL_CTL_ADD);
 
       /* We've reactivated a file descriptor that's been watched before. */
-      if (uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_MOD, w->fd, &e))
+      if (epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_MOD, w->fd, &e))
         abort();
     }
 
     w->events = w->pevents;
   }
 
-  sigmask = 0;
-  if (loop->flags & UV_LOOP_BLOCK_SIGPROF)
-    sigmask |= 1 << (SIGPROF - 1);
+  psigmask = NULL;
+  if (loop->flags & UV_LOOP_BLOCK_SIGPROF) {
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGPROF);
+  }
 
   assert(timeout >= -1);
   base = loop->time;
   count = 48; /* Benchmarks suggest this gives the best throughput. */
 
   for (;;) {
-    if (no_epoll_wait || sigmask) {
-      nfds = uv__epoll_pwait(loop->backend_fd,
-                             events,
-                             ARRAY_SIZE(events),
-                             timeout,
-                             sigmask);
+    if (no_epoll_wait || psigmask) {
+      nfds = epoll_pwait(loop->backend_fd,
+                         events,
+                         ARRAY_SIZE(events),
+                         timeout,
+                         psigmask);
     } else {
-      nfds = uv__epoll_wait(loop->backend_fd,
-                            events,
-                            ARRAY_SIZE(events),
-                            timeout);
+      nfds = epoll_wait(loop->backend_fd, events, ARRAY_SIZE(events), timeout);
       if (nfds == -1 && errno == ENOSYS) {
         no_epoll_wait = 1;
         continue;
@@ -250,7 +251,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     loop->watchers[loop->nwatchers + 1] = (void*) (uintptr_t) nfds;
     for (i = 0; i < nfds; i++) {
       pe = events + i;
-      fd = pe->data;
+      fd = pe->data.u64;
 
       /* Skip invalidated events, see uv__platform_invalidate_fd */
       if (fd == -1)
@@ -267,7 +268,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
          * Ignore all errors because we may be racing with another thread
          * when the file descriptor is closed.
          */
-        uv__epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
+        epoll_ctl(loop->backend_fd, UV__EPOLL_CTL_DEL, fd, pe);
         continue;
       }
 
