@@ -367,6 +367,7 @@ int uv_spawn(uv_loop_t* loop,
   int err;
   int exec_errorno;
   int i;
+  int status;
 
   assert(options->file != NULL);
   assert(!(options->flags & ~(UV_PROCESS_DETACHED |
@@ -383,7 +384,7 @@ int uv_spawn(uv_loop_t* loop,
     stdio_count = 3;
 
   err = -ENOMEM;
-  pipes = malloc(stdio_count * sizeof(*pipes));
+  pipes = uv__malloc(stdio_count * sizeof(*pipes));
   if (pipes == NULL)
     goto error;
 
@@ -453,11 +454,17 @@ int uv_spawn(uv_loop_t* loop,
 
   if (r == 0)
     ; /* okay, EOF */
-  else if (r == sizeof(exec_errorno))
-    ; /* okay, read errorno */
-  else if (r == -1 && errno == EPIPE)
-    ; /* okay, got EPIPE */
-  else
+  else if (r == sizeof(exec_errorno)) {
+    do
+      err = waitpid(pid, &status, 0); /* okay, read errorno */
+    while (err == -1 && errno == EINTR);
+    assert(err == pid);
+  } else if (r == -1 && errno == EPIPE) {
+    do
+      err = waitpid(pid, &status, 0); /* okay, got EPIPE */
+    while (err == -1 && errno == EINTR);
+    assert(err == pid);
+  } else
     abort();
 
   uv__close(signal_pipe[0]);
@@ -482,7 +489,7 @@ int uv_spawn(uv_loop_t* loop,
   process->pid = pid;
   process->exit_cb = options->exit_cb;
 
-  free(pipes);
+  uv__free(pipes);
   return exec_errorno;
 
 error:
@@ -496,7 +503,7 @@ error:
       if (pipes[i][1] != -1)
         close(pipes[i][1]);
     }
-    free(pipes);
+    uv__free(pipes);
   }
 
   return err;

@@ -43,6 +43,7 @@ TEST_DECLARE   (semaphore_1)
 TEST_DECLARE   (semaphore_2)
 TEST_DECLARE   (semaphore_3)
 TEST_DECLARE   (tty)
+TEST_DECLARE   (tty_file)
 TEST_DECLARE   (stdio_over_pipes)
 TEST_DECLARE   (ip6_pton)
 TEST_DECLARE   (ipc_listen_before_write)
@@ -195,6 +196,9 @@ TEST_DECLARE   (fail_always)
 TEST_DECLARE   (pass_always)
 TEST_DECLARE   (socket_buffer_size)
 TEST_DECLARE   (spawn_fails)
+#ifndef _WIN32
+TEST_DECLARE   (spawn_fails_check_for_waitpid_cleanup)
+#endif
 TEST_DECLARE   (spawn_exit_code)
 TEST_DECLARE   (spawn_stdout)
 TEST_DECLARE   (spawn_stdin)
@@ -343,6 +347,7 @@ TASK_LIST_START
 #endif
   TEST_ENTRY  (pipe_set_non_blocking)
   TEST_ENTRY  (tty)
+  TEST_ENTRY  (tty_file)
   TEST_ENTRY  (stdio_over_pipes)
   TEST_ENTRY  (ip6_pton)
   TEST_ENTRY  (ipc_listen_before_write)
@@ -551,6 +556,9 @@ TASK_LIST_START
   TEST_ENTRY  (socket_buffer_size)
 
   TEST_ENTRY  (spawn_fails)
+#ifndef _WIN32
+  TEST_ENTRY  (spawn_fails_check_for_waitpid_cleanup)
+#endif
   TEST_ENTRY  (spawn_exit_code)
   TEST_ENTRY  (spawn_stdout)
   TEST_ENTRY  (spawn_stdin)

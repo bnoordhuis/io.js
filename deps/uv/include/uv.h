@@ -244,6 +244,12 @@ typedef enum {
 UV_EXTERN unsigned int uv_version(void);
 UV_EXTERN const char* uv_version_string(void);
 
+typedef void* (*uv_malloc_func)(size_t size);
+typedef void (*uv_free_func)(void* ptr);
+
+UV_EXTERN int uv_replace_allocator(uv_malloc_func malloc_func,
+                                   uv_free_func free_func);
+
 UV_EXTERN uv_loop_t* uv_default_loop(void);
 UV_EXTERN int uv_loop_init(uv_loop_t* loop);
 UV_EXTERN int uv_loop_close(uv_loop_t* loop);
@@ -644,13 +650,13 @@ UV_EXTERN int uv_tty_reset_mode(void);
 UV_EXTERN int uv_tty_get_winsize(uv_tty_t*, int* width, int* height);
 
 #ifdef __cplusplus
-}  /* extern "C" */
+extern "C++" {
 
 inline int uv_tty_set_mode(uv_tty_t* handle, int mode) {
   return uv_tty_set_mode(handle, static_cast<uv_tty_mode_t>(mode));
 }
 
-extern "C" {
+}
 #endif
 
 UV_EXTERN uv_handle_type uv_guess_handle(uv_file file);
@@ -799,6 +805,7 @@ struct uv_getnameinfo_s {
   UV_REQ_FIELDS
   /* read-only */
   uv_loop_t* loop;
+  /* host and service are marked as private, but they really aren't. */
   UV_GETNAMEINFO_PRIVATE_FIELDS
 };
 
