@@ -18,7 +18,7 @@ var interfacer = spawn(process.execPath, ['debug', '-p', '655555']);
 console.error(process.execPath, 'debug', '-p', '655555');
 interfacer.stdout.setEncoding('utf-8');
 interfacer.stderr.setEncoding('utf-8');
-var onData = function (data) {
+var onData = function(data) {
   data = (buffer + data).split('\n');
   buffer = data.pop();
   data.forEach(function(line) {
@@ -34,6 +34,6 @@ interfacer.on('line', function(line) {
   assert.ok(expected == line, 'Got unexpected line: ' + line);
 });
 
-interfacer.on('exit', function (code, signal) {
+interfacer.on('exit', function(code, signal) {
   assert.ok(code == 1, 'Got unexpected code: ' + code);
 });
