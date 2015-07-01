@@ -1,0 +1,25 @@
+#!/bin/bash
+
+TEMP_SCRIPT_FILE="/tmp/node-tick-processor-input-script"
+tools_path=`cd $(dirname "$0");pwd`
+v8_tools="$tools_path/../../deps/v8/tools"
+log_file="v8.log"
+for arg in "$@"
+do
+  if ! expr "X${arg}" : "^X-" > /dev/null; then
+    log_file=${arg}
+  fi
+done
+
+cat $tools_path/polyfill.js $v8_tools/splaytree.js $v8_tools/codemap.js \
+  $v8_tools/csvparser.js $v8_tools/consarray.js \
+  $v8_tools/profile.js $v8_tools/profile_view.js \
+  $v8_tools/logreader.js $v8_tools/tickprocessor.js \
+  $v8_tools/SourceMap.js \
+  $v8_tools/tickprocessor-driver.js >> $TEMP_SCRIPT_FILE
+
+NODE=${NODE:-node}
+# nm spits out 'no symbols found' messages to stderr.
+$NODE $TEMP_SCRIPT_FILE $log_file 2>/dev/null;
+
+rm -f $TEMP_SCRIPT_FILE
