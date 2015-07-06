@@ -571,11 +571,11 @@
 
   function createWritableStdioStream(fd) {
     var stream;
-    var tty_wrap = process.binding('tty_wrap');
 
     // Note stream._type is used for test-module-load-list.js
 
-    switch (tty_wrap.guessHandleType(fd)) {
+    var type = process.binding('tty_wrap').guessHandleType(fd);
+    switch (type) {
       case 'TTY':
         var tty = NativeModule.require('tty');
         stream = new tty.WriteStream(fd);
@@ -590,9 +590,20 @@
 
       case 'PIPE':
       case 'TCP':
+        if (type === 'PIPE') {
+          var handle = new (process.binding('pipe_wrap').Pipe)();
+        } else {
+          var handle = new (process.binding('tcp_wrap').TCP)();
+        }
+        handle.open(fd);
+        var err = handle.setBlocking(true);
+        if (err) {
+          var errnoException = NativeModule.require('util')._errnoException;
+          throw errnoException(err, 'setBlocking');
+        }
         var net = NativeModule.require('net');
         stream = new net.Socket({
-          fd: fd,
+          handle: handle,
           readable: false,
           writable: true
         });
