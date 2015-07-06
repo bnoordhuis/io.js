@@ -19,6 +19,11 @@ cat $tools_path/polyfill.js $v8_tools/splaytree.js $v8_tools/codemap.js \
   $v8_tools/tickprocessor-driver.js >> $TEMP_SCRIPT_FILE
 
 NODE=${NODE:-node}
+
+if [ ! -x "$NODE" ] && [ -x "$(dirname "$0")/../../iojs" ]; then
+  NODE="$(dirname "$0")/../../iojs"
+fi
+
 # nm spits out 'no symbols found' messages to stderr.
 $NODE $TEMP_SCRIPT_FILE $log_file 2>/dev/null;
 
