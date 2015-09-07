@@ -14,7 +14,6 @@
     'node_v8_options%': '',
     'node_target_type%': 'executable',
     'library_files': [
-      'src/node.js',
       'lib/_debug_agent.js',
       'lib/_debugger.js',
       'lib/_linklist.js',

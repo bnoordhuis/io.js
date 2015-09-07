@@ -23,6 +23,10 @@
     # Don't bake anything extra into the snapshot.
     'v8_use_external_startup_data%': 0,
 
+    'v8_extra_library_files%': [
+      '<(DEPTH)/src/node.js',
+    ],
+
     'conditions': [
       ['OS == "win"', {
         'os_posix': 0,

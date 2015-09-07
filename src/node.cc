@@ -1448,33 +1448,6 @@ static void ReportException(Environment* env, const TryCatch& try_catch) {
 }
 
 
-// Executes a str within the current v8 context.
-static Local<Value> ExecuteString(Environment* env,
-                                  Local<String> source,
-                                  Local<String> filename) {
-  EscapableHandleScope scope(env->isolate());
-  TryCatch try_catch;
-
-  // try_catch must be nonverbose to disable FatalException() handler,
-  // we will handle exceptions ourself.
-  try_catch.SetVerbose(false);
-
-  Local<v8::Script> script = v8::Script::Compile(source, filename);
-  if (script.IsEmpty()) {
-    ReportException(env, try_catch);
-    exit(3);
-  }
-
-  Local<Value> result = script->Run();
-  if (result.IsEmpty()) {
-    ReportException(env, try_catch);
-    exit(4);
-  }
-
-  return scope.Escape(result);
-}
-
-
 static void GetActiveRequests(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
 
@@ -2594,6 +2567,18 @@ void StopProfilerIdleNotifier(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+// Most of the time, it's best to use `console.error` to write
+// to the process.stderr stream.  However, in some cases, such as
+// when debugging the stream.Writable class or the process.nextTick
+// function, it is useful to bypass JavaScript entirely.
+static void RawDebug(const FunctionCallbackInfo<Value>& args) {
+  CHECK(args.Length() == 1 && args[0]->IsString());
+  node::Utf8Value message(args.GetIsolate(), args[0]);
+  fprintf(stderr, "%s\n", *message);
+  fflush(stderr);
+}
+
+
 #define READONLY_PROPERTY(obj, str, var)                                      \
   do {                                                                        \
     obj->ForceSet(OneByteString(env->isolate(), str), var, v8::ReadOnly);     \
@@ -2848,6 +2833,7 @@ void SetupProcessObject(Environment* env,
                        env->as_external());
 
   // define various internal methods
+  env->SetMethod(process, "_rawDebug", RawDebug);
   env->SetMethod(process,
                  "_startProfilerIdleNotifier",
                  StartProfilerIdleNotifier);
@@ -2925,58 +2911,16 @@ static void SignalExit(int signo) {
 }
 
 
-// Most of the time, it's best to use `console.error` to write
-// to the process.stderr stream.  However, in some cases, such as
-// when debugging the stream.Writable class or the process.nextTick
-// function, it is useful to bypass JavaScript entirely.
-static void RawDebug(const FunctionCallbackInfo<Value>& args) {
-  CHECK(args.Length() == 1 && args[0]->IsString() &&
-        "must be called with a single string");
-  node::Utf8Value message(args.GetIsolate(), args[0]);
-  fprintf(stderr, "%s\n", *message);
-  fflush(stderr);
-}
-
-
 void LoadEnvironment(Environment* env) {
   HandleScope handle_scope(env->isolate());
 
   env->isolate()->SetFatalErrorHandler(node::OnFatalError);
   env->isolate()->AddMessageListener(OnMessage);
-
-  // Compile, execute the src/node.js file. (Which was included as static C
-  // string in node_natives.h. 'natve_node' is the string containing that
-  // source code.)
-
-  // The node.js file returns a function 'f'
   atexit(AtExit);
 
-  TryCatch try_catch;
-
-  // Disable verbose mode to stop FatalException() handler from trying
-  // to handle the exception. Errors this early in the start-up phase
-  // are not safe to ignore.
-  try_catch.SetVerbose(false);
-
-  Local<String> script_name = FIXED_ONE_BYTE_STRING(env->isolate(), "node.js");
-  Local<Value> f_value = ExecuteString(env, MainSource(env), script_name);
-  if (try_catch.HasCaught())  {
-    ReportException(env, try_catch);
-    exit(10);
-  }
-  CHECK(f_value->IsFunction());
-  Local<Function> f = Local<Function>::Cast(f_value);
-
-  // Now we call 'f' with the 'process' variable that we've built up with
-  // all our bindings. Inside node.js we'll take care of assigning things to
-  // their places.
-
-  // We start the process this way in order to be more modular. Developers
-  // who do not like how 'src/node.js' setups the module system but do like
-  // Node's I/O bindings may want to replace 'f' with their own function.
-
-  // Add a reference to the global object
-  Local<Object> global = env->context()->Global();
+  Local<Context> context = env->context();
+  Local<Object> extras = context->GetExtrasExportsObject();
+  Local<Object> global = context->Global();
 
 #if defined HAVE_DTRACE || defined HAVE_ETW
   InitDTrace(env, global);
@@ -2990,18 +2934,26 @@ void LoadEnvironment(Environment* env) {
   InitPerfCounters(env, global);
 #endif
 
+  // String should match property name in src/node.js.
+  Local<String> bootstrap_string =
+      FIXED_ONE_BYTE_STRING(env->isolate(), "internal/bootstrap");
+  Local<Value> bootstrap_function =
+      extras->Get(context, bootstrap_string).ToLocalChecked();
+  CHECK(bootstrap_function->IsFunction());
+
   // Enable handling of uncaught exceptions
   // (FatalException(), break on uncaught exception in debugger)
   //
   // This is not strictly necessary since it's almost impossible
   // to attach the debugger fast enought to break on exception
   // thrown during process startup.
+  TryCatch try_catch(env->isolate());
   try_catch.SetVerbose(true);
 
-  env->SetMethod(env->process_object(), "_rawDebug", RawDebug);
-
-  Local<Value> arg = env->process_object();
-  f->Call(global, 1, &arg);
+  Local<Value> argv[] = { global, env->process_object() };
+  bootstrap_function.As<Function>()->Call(Null(env->isolate()),
+                                          ARRAY_SIZE(argv),
+                                          argv);
 }
 
 static void PrintHelp();
