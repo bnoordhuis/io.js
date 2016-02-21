@@ -17,6 +17,8 @@ using v8::ArrayBuffer;
 using v8::Boolean;
 using v8::Context;
 using v8::Debug;
+using v8::DontDelete;
+using v8::DontEnum;
 using v8::EscapableHandleScope;
 using v8::External;
 using v8::Function;
@@ -36,6 +38,7 @@ using v8::ObjectTemplate;
 using v8::Persistent;
 using v8::PropertyAttribute;
 using v8::PropertyCallbackInfo;
+using v8::ReadOnly;
 using v8::Script;
 using v8::ScriptCompiler;
 using v8::ScriptOrigin;
@@ -130,52 +133,43 @@ class ContextifyContext {
     HandleScope scope(env()->isolate());
 
     Local<Context> context = PersistentToLocal(env()->isolate(), context_);
-    Local<Object> global =
-        context->Global()->GetPrototype()->ToObject(env()->isolate());
+    Local<Object> global = context->Global();
+    Local<Object> global_proto = context->Global()->GetPrototype().As<Object>();
     Local<Object> sandbox = PersistentToLocal(env()->isolate(), sandbox_);
 
-    Local<Function> clone_property_method;
+    Local<String> value_key =
+        FIXED_ONE_BYTE_STRING(env()->isolate(), "value");
+    Local<String> configurable_key =
+        FIXED_ONE_BYTE_STRING(env()->isolate(), "configurable");
+    Local<String> enumerable_key =
+        FIXED_ONE_BYTE_STRING(env()->isolate(), "enumerable");
+    Local<String> writable_key = env()->writable_string();
 
-    Local<Array> names = global->GetOwnPropertyNames();
-    int length = names->Length();
-    for (int i = 0; i < length; i++) {
-      Local<String> key = names->Get(i)->ToString(env()->isolate());
-      bool has = sandbox->HasOwnProperty(key);
-      if (!has) {
-        // Could also do this like so:
-        //
-        // PropertyAttribute att = global->GetPropertyAttributes(key_v);
-        // Local<Value> val = global->Get(key_v);
-        // sandbox->ForceSet(key_v, val, att);
-        //
-        // However, this doesn't handle ES6-style properties configured with
-        // Object.defineProperty, and that's exactly what we're up against at
-        // this point.  ForceSet(key,val,att) only supports value properties
-        // with the ES3-style attribute flags (DontDelete/DontEnum/ReadOnly),
-        // which doesn't faithfully capture the full range of configurations
-        // that can be done using Object.defineProperty.
-        if (clone_property_method.IsEmpty()) {
-          Local<String> code = FIXED_ONE_BYTE_STRING(env()->isolate(),
-              "(function cloneProperty(source, key, target) {\n"
-              "  if (key === 'Proxy') return;\n"
-              "  try {\n"
-              "    var desc = Object.getOwnPropertyDescriptor(source, key);\n"
-              "    if (desc.value === source) desc.value = target;\n"
-              "    Object.defineProperty(target, key, desc);\n"
-              "  } catch (e) {\n"
-              "   // Catch sealed properties errors\n"
-              "  }\n"
-              "})");
-
-          Local<String> fname = FIXED_ONE_BYTE_STRING(env()->isolate(),
-              "binding:script");
-          Local<Script> script = Script::Compile(code, fname);
-          clone_property_method = Local<Function>::Cast(script->Run());
-          CHECK(clone_property_method->IsFunction());
-        }
-        Local<Value> args[] = { global, key, sandbox };
-        clone_property_method->Call(global, ARRAY_SIZE(args), args);
-      }
+    Local<Array> names =
+        global_proto->GetOwnPropertyNames(context).ToLocalChecked();
+    for (uint32_t idx = 0, length = names->Length(); idx < length; idx += 1) {
+      Local<Value> key_val = names->Get(context, idx).ToLocalChecked();
+      CHECK(key_val->IsString());
+      Local<String> key = key_val.As<String>();
+      Local<Value> descriptor_val =
+          global_proto->GetOwnPropertyDescriptor(context, key).ToLocalChecked();
+      CHECK(descriptor_val->IsObject());
+      Local<Object> descriptor = descriptor_val.As<Object>();
+      Local<Value> value = descriptor->Get(context, value_key).ToLocalChecked();
+      //{ String::Utf8Value s(key_val); if (!strcmp(*s, "n")) { String::Utf8Value s(descriptor->GetOwnPropertyNames()); printf(" %s\n", *s); } }
+      if (value->SameValue(global)) value = sandbox;
+      const bool is_configurable =
+          descriptor->Get(context, configurable_key).ToLocalChecked()->IsTrue();
+      const bool is_enumerable =
+          descriptor->Get(context, enumerable_key).ToLocalChecked()->IsTrue();
+      const bool is_writable =
+          descriptor->Get(context, writable_key).ToLocalChecked()->IsTrue();
+      const PropertyAttribute attributes =
+          PropertyAttribute(
+              int(is_configurable ? None : DontDelete) |
+              int(is_enumerable ? None : DontEnum) |
+              int(is_writable ? None : ReadOnly));
+      sandbox->DefineOwnProperty(context, key, value, attributes);
     }
   }
 
