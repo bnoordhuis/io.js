@@ -657,10 +657,12 @@ SamplerThread* SamplerThread::instance_ = NULL;
 //
 DISABLE_ASAN void TickSample::Init(Isolate* isolate,
                                    const v8::RegisterState& regs,
-                                   RecordCEntryFrame record_c_entry_frame) {
+                                   RecordCEntryFrame record_c_entry_frame,
+                                   bool update_stats) {
   timestamp = base::TimeTicks::HighResolutionNow();
   pc = reinterpret_cast<Address>(regs.pc);
   state = isolate->current_vm_state();
+  this->update_stats = update_stats;
 
   // Avoid collecting traces while doing GC.
   if (state == GC) return;
@@ -743,7 +745,6 @@ void Sampler::TearDown() {
 #endif
 }
 
-
 Sampler::Sampler(Isolate* isolate, int interval)
     : isolate_(isolate),
       interval_(interval),
@@ -751,16 +752,15 @@ Sampler::Sampler(Isolate* isolate, int interval)
       has_processing_thread_(false),
       active_(false),
       is_counting_samples_(false),
-      js_and_external_sample_count_(0) {
+      js_sample_count_(0),
+      external_sample_count_(0) {
   data_ = new PlatformData;
 }
-
 
 Sampler::~Sampler() {
   DCHECK(!IsActive());
   delete data_;
 }
-
 
 void Sampler::Start() {
   DCHECK(!IsActive());
@@ -796,11 +796,10 @@ void Sampler::SampleStack(const v8::RegisterState& state) {
   TickSample* sample = isolate_->cpu_profiler()->StartTickSample();
   TickSample sample_obj;
   if (sample == NULL) sample = &sample_obj;
-  sample->Init(isolate_, state, TickSample::kIncludeCEntryFrame);
+  sample->Init(isolate_, state, TickSample::kIncludeCEntryFrame, true);
   if (is_counting_samples_) {
-    if (sample->state == JS || sample->state == EXTERNAL) {
-      ++js_and_external_sample_count_;
-    }
+    if (sample->state == JS) ++js_sample_count_;
+    if (sample->state == EXTERNAL) ++external_sample_count_;
   }
   Tick(sample);
   if (sample != &sample_obj) {

@@ -78,10 +78,12 @@ Handle<Code> CodeGenerator::GenerateCode() {
   if (linkage()->GetIncomingDescriptor()->IsJSFunctionCall()) {
     ProfileEntryHookStub::MaybeCallEntryHook(masm());
   }
-
   // Architecture-specific, linkage-specific prologue.
   info->set_prologue_offset(masm()->pc_offset());
   AssemblePrologue();
+  if (linkage()->GetIncomingDescriptor()->InitializeRootRegister()) {
+    masm()->InitializeRootRegister();
+  }
 
   // Define deoptimization literals for all inlined functions.
   DCHECK_EQ(0u, deoptimization_literals_.size());
@@ -237,6 +239,12 @@ void CodeGenerator::RecordSafepoint(ReferenceMap* references,
       // Safepoint table indices are 0-based from the beginning of the spill
       // slot area, adjust appropriately.
       index -= stackSlotToSpillSlotDelta;
+      // We might index values in the fixed part of the frame (i.e. the
+      // closure pointer or the context pointer); these are not spill slots
+      // and therefore don't work with the SafepointTable currently, but
+      // we also don't need to worry about them, since the GC has special
+      // knowledge about those fields anyway.
+      if (index < 0) continue;
       safepoint.DefinePointerSlot(index, zone());
     } else if (operand.IsRegister() && (kind & Safepoint::kWithRegisters)) {
       Register reg = LocationOperand::cast(operand).GetRegister();

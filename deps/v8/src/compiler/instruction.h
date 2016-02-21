@@ -633,8 +633,14 @@ class ParallelMove final : public ZoneVector<MoveOperands*>, public ZoneObject {
 
   MoveOperands* AddMove(const InstructionOperand& from,
                         const InstructionOperand& to) {
-    auto zone = get_allocator().zone();
-    auto move = new (zone) MoveOperands(from, to);
+    Zone* zone = get_allocator().zone();
+    return AddMove(from, to, zone);
+  }
+
+  MoveOperands* AddMove(const InstructionOperand& from,
+                        const InstructionOperand& to,
+                        Zone* operand_allocation_zone) {
+    MoveOperands* move = new (operand_allocation_zone) MoveOperands(from, to);
     push_back(move);
     return move;
   }
@@ -732,7 +738,6 @@ class Instruction final {
     return FlagsConditionField::decode(opcode());
   }
 
-  // TODO(titzer): make call into a flags.
   static Instruction* New(Zone* zone, InstructionCode opcode) {
     return New(zone, opcode, 0, nullptr, 0, nullptr, 0, nullptr);
   }
@@ -1322,6 +1327,11 @@ class InstructionSequence final : public ZoneObject {
   }
   void Print(const RegisterConfiguration* config) const;
   void Print() const;
+
+  void PrintBlock(const RegisterConfiguration* config, int block_id) const;
+  void PrintBlock(int block_id) const;
+
+  void Validate();
 
  private:
   friend std::ostream& operator<<(std::ostream& os,

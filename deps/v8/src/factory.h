@@ -262,7 +262,7 @@ class Factory final {
   Handle<AliasedArgumentsEntry> NewAliasedArgumentsEntry(
       int aliased_context_slot);
 
-  Handle<ExecutableAccessorInfo> NewExecutableAccessorInfo();
+  Handle<AccessorInfo> NewAccessorInfo();
 
   Handle<Script> NewScript(Handle<String> source);
 
@@ -322,6 +322,9 @@ class Factory final {
   Handle<FixedArray> CopyFixedArrayAndGrow(
       Handle<FixedArray> array, int grow_by,
       PretenureFlag pretenure = NOT_TENURED);
+
+  Handle<FixedArray> CopyFixedArrayUpTo(Handle<FixedArray> array, int new_len,
+                                        PretenureFlag pretenure = NOT_TENURED);
 
   Handle<FixedArray> CopyFixedArray(Handle<FixedArray> array);
 
@@ -394,11 +397,6 @@ class Factory final {
                                Handle<ScopeInfo> scope_info);
 
   // JS arrays are pretenured when allocated by the parser.
-
-  // Create a JSArray with no elements.
-  Handle<JSArray> NewJSArray(ElementsKind elements_kind,
-                             Strength strength = Strength::WEAK,
-                             PretenureFlag pretenure = NOT_TENURED);
 
   // Create a JSArray with a specified length and elements initialized
   // according to the specified mode.
@@ -473,11 +471,6 @@ class Factory final {
   // TODO(aandrey): Maybe these should take table, index and kind arguments.
   Handle<JSMapIterator> NewJSMapIterator();
   Handle<JSSetIterator> NewJSSetIterator();
-
-  // Creates a new JSIteratorResult object with the arguments {value} and
-  // {done}.  Implemented according to ES6 section 7.4.7 CreateIterResultObject.
-  Handle<JSIteratorResult> NewJSIteratorResult(Handle<Object> value,
-                                               Handle<Object> done);
 
   // Allocates a bound function.
   MaybeHandle<JSBoundFunction> NewJSBoundFunction(
@@ -704,6 +697,11 @@ class Factory final {
                                  Handle<SharedFunctionInfo> info,
                                  Handle<Context> context,
                                  PretenureFlag pretenure = TENURED);
+
+  // Create a JSArray with no elements and no length.
+  Handle<JSArray> NewJSArray(ElementsKind elements_kind,
+                             Strength strength = Strength::WEAK,
+                             PretenureFlag pretenure = NOT_TENURED);
 };
 
 }  // namespace internal

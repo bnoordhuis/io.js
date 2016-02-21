@@ -96,9 +96,12 @@ class FullCodeGenerator: public AstVisitor {
 #error Unsupported target architecture.
 #endif
 
+  static Register result_register();
+
  private:
   class Breakable;
   class Iteration;
+  class TryFinally;
 
   class TestContext;
 
@@ -115,11 +118,13 @@ class FullCodeGenerator: public AstVisitor {
       codegen_->nesting_stack_ = previous_;
     }
 
-    virtual Breakable* AsBreakable() { return NULL; }
-    virtual Iteration* AsIteration() { return NULL; }
+    virtual Breakable* AsBreakable() { return nullptr; }
+    virtual Iteration* AsIteration() { return nullptr; }
+    virtual TryFinally* AsTryFinally() { return nullptr; }
 
     virtual bool IsContinueTarget(Statement* target) { return false; }
     virtual bool IsBreakTarget(Statement* target) { return false; }
+    virtual bool IsTryFinally() { return false; }
 
     // Notify the statement that we are exiting it via break, continue, or
     // return and give it a chance to generate cleanup code.  Return the
@@ -217,14 +222,50 @@ class FullCodeGenerator: public AstVisitor {
     }
   };
 
+  class DeferredCommands {
+   public:
+    enum Command { kReturn, kThrow, kBreak, kContinue };
+    typedef int TokenId;
+    struct DeferredCommand {
+      Command command;
+      TokenId token;
+      Statement* target;
+    };
+
+    DeferredCommands(FullCodeGenerator* codegen, Label* finally_entry)
+        : codegen_(codegen),
+          commands_(codegen->zone()),
+          return_token_(TokenDispenserForFinally::kInvalidToken),
+          throw_token_(TokenDispenserForFinally::kInvalidToken),
+          finally_entry_(finally_entry) {}
+
+    void EmitCommands();
+
+    void RecordBreak(Statement* target);
+    void RecordContinue(Statement* target);
+    void RecordReturn();
+    void RecordThrow();
+    void EmitFallThrough();
+
+   private:
+    MacroAssembler* masm() { return codegen_->masm(); }
+    void EmitJumpToFinally(TokenId token);
+
+    FullCodeGenerator* codegen_;
+    ZoneVector<DeferredCommand> commands_;
+    TokenDispenserForFinally dispenser_;
+    TokenId return_token_;
+    TokenId throw_token_;
+    Label* finally_entry_;
+  };
+
   // The try block of a try/finally statement.
   class TryFinally : public NestedStatement {
    public:
     static const int kElementCount = TryBlockConstant::kElementCount;
 
-    TryFinally(FullCodeGenerator* codegen, Label* finally_entry)
-        : NestedStatement(codegen), finally_entry_(finally_entry) {
-    }
+    TryFinally(FullCodeGenerator* codegen, DeferredCommands* commands)
+        : NestedStatement(codegen), deferred_commands_(commands) {}
 
     NestedStatement* Exit(int* stack_depth, int* context_length) override;
     NestedStatement* AccumulateDepth(int* stack_depth) override {
@@ -232,8 +273,13 @@ class FullCodeGenerator: public AstVisitor {
       return previous_;
     }
 
+    bool IsTryFinally() override { return true; }
+    TryFinally* AsTryFinally() override { return this; }
+
+    DeferredCommands* deferred_commands() { return deferred_commands_; }
+
    private:
-    Label* finally_entry_;
+    DeferredCommands* deferred_commands_;
   };
 
   // The finally block of a try/finally statement.
@@ -455,11 +501,13 @@ class FullCodeGenerator: public AstVisitor {
 
   // Emit code to pop values from the stack associated with nested statements
   // like try/catch, try/finally, etc, running the finallies and unwinding the
-  // handlers as needed.
-  void EmitUnwindBeforeReturn();
+  // handlers as needed. Also emits the return sequence if necessary (i.e.,
+  // if the return is not delayed by a finally block).
+  void EmitUnwindAndReturn();
 
   // Platform-specific return sequence
   void EmitReturnSequence();
+  void EmitProfilingCounterHandlingForReturnSequence(bool is_tail_call);
 
   // Platform-specific code sequences for calls
   void EmitCall(Call* expr, ConvertReceiverMode = ConvertReceiverMode::kAny);
@@ -477,26 +525,20 @@ class FullCodeGenerator: public AstVisitor {
   F(IsRegExp)                           \
   F(IsJSProxy)                          \
   F(Call)                               \
-  F(ArgumentsLength)                    \
-  F(Arguments)                          \
   F(ValueOf)                            \
-  F(SetValueOf)                         \
-  F(IsDate)                             \
   F(StringCharFromCode)                 \
   F(StringCharAt)                       \
   F(OneByteSeqStringSetChar)            \
   F(TwoByteSeqStringSetChar)            \
-  F(ObjectEquals)                       \
-  F(IsFunction)                         \
   F(IsJSReceiver)                       \
   F(IsSimdValue)                        \
   F(MathPow)                            \
-  F(IsMinusZero)                        \
   F(HasCachedArrayIndex)                \
   F(GetCachedArrayIndex)                \
   F(GetSuperConstructor)                \
   F(FastOneByteArrayJoin)               \
   F(GeneratorNext)                      \
+  F(GeneratorReturn)                    \
   F(GeneratorThrow)                     \
   F(DebugBreakInOptimizedCode)          \
   F(ClassOf)                            \
@@ -633,7 +675,7 @@ class FullCodeGenerator: public AstVisitor {
               TypeFeedbackId id = TypeFeedbackId::None());
 
   // Inside typeof reference errors are never thrown.
-  void CallLoadIC(TypeofMode typeof_mode, LanguageMode language_mode = SLOPPY,
+  void CallLoadIC(TypeofMode typeof_mode,
                   TypeFeedbackId id = TypeFeedbackId::None());
   void CallStoreIC(TypeFeedbackId id = TypeFeedbackId::None());
 
@@ -669,6 +711,9 @@ class FullCodeGenerator: public AstVisitor {
   void ExitFinallyBlock();
   void ClearPendingMessage();
 
+  void EmitContinue(Statement* target);
+  void EmitBreak(Statement* target);
+
   // Loop nesting counter.
   int loop_depth() { return loop_depth_; }
   void increment_loop_depth() { loop_depth_++; }
@@ -693,7 +738,6 @@ class FullCodeGenerator: public AstVisitor {
   FunctionLiteral* literal() const { return info_->literal(); }
   Scope* scope() { return scope_; }
 
-  static Register result_register();
   static Register context_register();
 
   // Set fields in the stack frame. Offsets are the frame pointer relative

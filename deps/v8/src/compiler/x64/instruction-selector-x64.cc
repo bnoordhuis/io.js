@@ -622,6 +622,12 @@ void InstructionSelector::VisitWord32Ctz(Node* node) {
 }
 
 
+void InstructionSelector::VisitWord32ReverseBits(Node* node) { UNREACHABLE(); }
+
+
+void InstructionSelector::VisitWord64ReverseBits(Node* node) { UNREACHABLE(); }
+
+
 void InstructionSelector::VisitWord32Popcnt(Node* node) {
   X64OperandGenerator g(this);
   Emit(kX64Popcnt32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
@@ -734,10 +740,11 @@ void VisitMulHigh(InstructionSelector* selector, Node* node,
   if (selector->IsLive(left) && !selector->IsLive(right)) {
     std::swap(left, right);
   }
+  InstructionOperand temps[] = {g.TempRegister(rax)};
   // TODO(turbofan): We use UseUniqueRegister here to improve register
   // allocation.
   selector->Emit(opcode, g.DefineAsFixed(node, rdx), g.UseFixed(left, rax),
-                 g.UseUniqueRegister(right));
+                 g.UseUniqueRegister(right), arraysize(temps), temps);
 }
 
 
@@ -854,6 +861,18 @@ void InstructionSelector::VisitChangeFloat64ToInt32(Node* node) {
 void InstructionSelector::VisitChangeFloat64ToUint32(Node* node) {
   X64OperandGenerator g(this);
   Emit(kSSEFloat64ToUint32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToInt32(Node* node) {
+  X64OperandGenerator g(this);
+  Emit(kSSEFloat32ToInt32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToUint32(Node* node) {
+  X64OperandGenerator g(this);
+  Emit(kSSEFloat32ToUint32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
 }
 
 
@@ -1046,6 +1065,12 @@ void InstructionSelector::VisitTruncateInt64ToInt32(Node* node) {
 }
 
 
+void InstructionSelector::VisitRoundInt32ToFloat32(Node* node) {
+  X64OperandGenerator g(this);
+  Emit(kSSEInt32ToFloat32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
+}
+
+
 void InstructionSelector::VisitRoundInt64ToFloat32(Node* node) {
   X64OperandGenerator g(this);
   Emit(kSSEInt64ToFloat32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
@@ -1055,6 +1080,12 @@ void InstructionSelector::VisitRoundInt64ToFloat32(Node* node) {
 void InstructionSelector::VisitRoundInt64ToFloat64(Node* node) {
   X64OperandGenerator g(this);
   Emit(kSSEInt64ToFloat64, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
+}
+
+
+void InstructionSelector::VisitRoundUint32ToFloat32(Node* node) {
+  X64OperandGenerator g(this);
+  Emit(kSSEUint32ToFloat32, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
 }
 
 

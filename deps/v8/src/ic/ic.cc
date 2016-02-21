@@ -11,6 +11,7 @@
 #include "src/codegen.h"
 #include "src/conversions.h"
 #include "src/execution.h"
+#include "src/field-type.h"
 #include "src/frames-inl.h"
 #include "src/ic/call-optimization.h"
 #include "src/ic/handler-compiler.h"
@@ -21,6 +22,7 @@
 #include "src/macro-assembler.h"
 #include "src/prototype.h"
 #include "src/runtime/runtime.h"
+#include "src/runtime/runtime-utils.h"
 
 namespace v8 {
 namespace internal {
@@ -545,8 +547,7 @@ void CompareIC::Clear(Isolate* isolate, Address address, Code* target,
   CompareICStub stub(target->stub_key(), isolate);
   // Only clear CompareICs that can retain objects.
   if (stub.state() != CompareICState::KNOWN_RECEIVER) return;
-  SetTargetAtAddress(address,
-                     GetRawUninitialized(isolate, stub.op(), stub.strength()),
+  SetTargetAtAddress(address, GetRawUninitialized(isolate, stub.op()),
                      constant_pool);
   PatchInlinedSmiCode(isolate, address, DISABLE_INLINED_SMI_CHECK);
 }
@@ -558,9 +559,7 @@ Handle<Code> KeyedLoadIC::ChooseMegamorphicStub(Isolate* isolate,
   if (FLAG_compiled_keyed_generic_loads) {
     return KeyedLoadGenericStub(isolate, LoadICState(extra_state)).GetCode();
   } else {
-    return is_strong(LoadICState::GetLanguageMode(extra_state))
-               ? isolate->builtins()->KeyedLoadIC_Megamorphic_Strong()
-               : isolate->builtins()->KeyedLoadIC_Megamorphic();
+    return isolate->builtins()->KeyedLoadIC_Megamorphic();
   }
 }
 
@@ -667,9 +666,9 @@ MaybeHandle<Object> LoadIC::Load(Handle<Object> object, Handle<Name> name) {
       TRACE_GENERIC_IC(isolate(), "LoadIC", "name as array index");
     }
     Handle<Object> result;
-    ASSIGN_RETURN_ON_EXCEPTION(
-        isolate(), result,
-        Object::GetElement(isolate(), object, index, language_mode()), Object);
+    ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                               Object::GetElement(isolate(), object, index),
+                               Object);
     return result;
   }
 
@@ -685,9 +684,9 @@ MaybeHandle<Object> LoadIC::Load(Handle<Object> object, Handle<Name> name) {
     ScriptContextTable::LookupResult lookup_result;
     if (ScriptContextTable::Lookup(script_contexts, str_name, &lookup_result)) {
       Handle<Object> result =
-          FixedArray::get(ScriptContextTable::GetContext(
+          FixedArray::get(*ScriptContextTable::GetContext(
                               script_contexts, lookup_result.context_index),
-                          lookup_result.slot_index);
+                          lookup_result.slot_index, isolate());
       if (*result == *isolate()->factory()->the_hole_value()) {
         // Do not install stubs and stay pre-monomorphic for
         // uninitialized accesses.
@@ -713,8 +712,8 @@ MaybeHandle<Object> LoadIC::Load(Handle<Object> object, Handle<Name> name) {
     // Get the property.
     Handle<Object> result;
 
-    ASSIGN_RETURN_ON_EXCEPTION(
-        isolate(), result, Object::GetProperty(&it, language_mode()), Object);
+    ASSIGN_RETURN_ON_EXCEPTION(isolate(), result, Object::GetProperty(&it),
+                               Object);
     if (it.IsFound()) {
       return result;
     } else if (!ShouldThrowReferenceError(object)) {
@@ -899,9 +898,7 @@ Handle<Code> KeyedLoadIC::initialize_stub_in_optimized_code(
   if (initialization_state != MEGAMORPHIC) {
     return KeyedLoadICStub(isolate, LoadICState(extra_state)).GetCode();
   }
-  return is_strong(LoadICState::GetLanguageMode(extra_state))
-             ? isolate->builtins()->KeyedLoadIC_Megamorphic_Strong()
-             : isolate->builtins()->KeyedLoadIC_Megamorphic();
+  return isolate->builtins()->KeyedLoadIC_Megamorphic();
 }
 
 
@@ -976,28 +973,33 @@ bool IsCompatibleReceiver(LookupIterator* lookup, Handle<Map> receiver_map) {
   DCHECK(lookup->state() == LookupIterator::ACCESSOR);
   Isolate* isolate = lookup->isolate();
   Handle<Object> accessors = lookup->GetAccessors();
-  if (accessors->IsExecutableAccessorInfo()) {
-    Handle<ExecutableAccessorInfo> info =
-        Handle<ExecutableAccessorInfo>::cast(accessors);
+  if (accessors->IsAccessorInfo()) {
+    Handle<AccessorInfo> info = Handle<AccessorInfo>::cast(accessors);
     if (info->getter() != NULL &&
-        !ExecutableAccessorInfo::IsCompatibleReceiverMap(isolate, info,
-                                                         receiver_map)) {
+        !AccessorInfo::IsCompatibleReceiverMap(isolate, info, receiver_map)) {
       return false;
     }
   } else if (accessors->IsAccessorPair()) {
     Handle<Object> getter(Handle<AccessorPair>::cast(accessors)->getter(),
                           isolate);
+    if (!getter->IsJSFunction() && !getter->IsFunctionTemplateInfo())
+      return false;
     Handle<JSObject> holder = lookup->GetHolder<JSObject>();
     Handle<Object> receiver = lookup->GetReceiver();
-    if (getter->IsJSFunction() && holder->HasFastProperties()) {
-      Handle<JSFunction> function = Handle<JSFunction>::cast(getter);
-      if (receiver->IsJSObject() || function->shared()->IsBuiltin() ||
-          !is_sloppy(function->shared()->language_mode())) {
-        CallOptimization call_optimization(function);
-        if (call_optimization.is_simple_api_call() &&
-            !call_optimization.IsCompatibleReceiverMap(receiver_map, holder)) {
+    if (holder->HasFastProperties()) {
+      if (getter->IsJSFunction()) {
+        Handle<JSFunction> function = Handle<JSFunction>::cast(getter);
+        if (!receiver->IsJSObject() && !function->shared()->IsBuiltin() &&
+            is_sloppy(function->shared()->language_mode())) {
+          // Calling sloppy non-builtins with a value as the receiver
+          // requires boxing.
           return false;
         }
+      }
+      CallOptimization call_optimization(getter);
+      if (call_optimization.is_simple_api_call() &&
+          !call_optimization.IsCompatibleReceiverMap(receiver_map, holder)) {
+        return false;
       }
     }
   }
@@ -1019,7 +1021,7 @@ void LoadIC::UpdateCaches(LookupIterator* lookup) {
       lookup->state() == LookupIterator::ACCESS_CHECK) {
     code = slow_stub();
   } else if (!lookup->IsFound()) {
-    if (kind() == Code::LOAD_IC && !is_strong(language_mode())) {
+    if (kind() == Code::LOAD_IC) {
       code = NamedLoadHandlerCompiler::ComputeLoadNonexistent(lookup->name(),
                                                               receiver_map());
       // TODO(jkummerow/verwaest): Introduce a builtin that handles this case.
@@ -1168,50 +1170,39 @@ Handle<Code> LoadIC::CompileHandler(LookupIterator* lookup,
         return stub.GetCode();
       }
 
-      Handle<Object> accessors = lookup->GetAccessors();
-      if (accessors->IsExecutableAccessorInfo()) {
-        Handle<ExecutableAccessorInfo> info =
-            Handle<ExecutableAccessorInfo>::cast(accessors);
-        if (v8::ToCData<Address>(info->getter()) == 0) break;
-        if (!ExecutableAccessorInfo::IsCompatibleReceiverMap(isolate(), info,
-                                                             map)) {
-          // This case should be already handled in LoadIC::UpdateCaches.
-          UNREACHABLE();
-          break;
-        }
-        if (!holder->HasFastProperties()) break;
-        NamedLoadHandlerCompiler compiler(isolate(), map, holder, cache_holder);
-        return compiler.CompileLoadCallback(lookup->name(), info);
-      }
-      if (accessors->IsAccessorPair()) {
-        Handle<Object> getter(Handle<AccessorPair>::cast(accessors)->getter(),
-                              isolate());
-        if (!getter->IsJSFunction()) break;
-        if (!holder->HasFastProperties()) break;
-        // When debugging we need to go the slow path to flood the accessor.
-        if (GetSharedFunctionInfo()->HasDebugInfo()) break;
-        Handle<JSFunction> function = Handle<JSFunction>::cast(getter);
-        if (!receiver->IsJSObject() && !function->shared()->IsBuiltin() &&
-            is_sloppy(function->shared()->language_mode())) {
-          // Calling sloppy non-builtins with a value as the receiver
-          // requires boxing.
-          break;
-        }
-        CallOptimization call_optimization(function);
-        NamedLoadHandlerCompiler compiler(isolate(), map, holder, cache_holder);
-        if (call_optimization.is_simple_api_call()) {
-          if (call_optimization.IsCompatibleReceiver(receiver, holder)) {
+      if (IsCompatibleReceiver(lookup, map)) {
+        Handle<Object> accessors = lookup->GetAccessors();
+        if (accessors->IsAccessorPair()) {
+          if (!holder->HasFastProperties()) break;
+          // When debugging we need to go the slow path to flood the accessor.
+          if (GetSharedFunctionInfo()->HasDebugInfo()) break;
+          Handle<Object> getter(Handle<AccessorPair>::cast(accessors)->getter(),
+                                isolate());
+          CallOptimization call_optimization(getter);
+          NamedLoadHandlerCompiler compiler(isolate(), map, holder,
+                                            cache_holder);
+          if (call_optimization.is_simple_api_call()) {
             return compiler.CompileLoadCallback(
                 lookup->name(), call_optimization, lookup->GetAccessorIndex());
-          } else {
+          }
+          int expected_arguments = Handle<JSFunction>::cast(getter)
+                                       ->shared()
+                                       ->internal_formal_parameter_count();
+          return compiler.CompileLoadViaGetter(
+              lookup->name(), lookup->GetAccessorIndex(), expected_arguments);
+        } else if (accessors->IsAccessorInfo()) {
+          Handle<AccessorInfo> info = Handle<AccessorInfo>::cast(accessors);
+          if (v8::ToCData<Address>(info->getter()) == 0) break;
+          if (!AccessorInfo::IsCompatibleReceiverMap(isolate(), info, map)) {
             // This case should be already handled in LoadIC::UpdateCaches.
             UNREACHABLE();
+            break;
           }
+          if (!holder->HasFastProperties()) break;
+          NamedLoadHandlerCompiler compiler(isolate(), map, holder,
+                                            cache_holder);
+          return compiler.CompileLoadCallback(lookup->name(), info);
         }
-        int expected_arguments =
-            function->shared()->internal_formal_parameter_count();
-        return compiler.CompileLoadViaGetter(
-            lookup->name(), lookup->GetAccessorIndex(), expected_arguments);
       }
       break;
     }
@@ -1237,9 +1228,7 @@ Handle<Code> LoadIC::CompileHandler(LookupIterator* lookup,
         // property must be found in the object for the stub to be
         // applicable.
         if (!receiver_is_holder) break;
-        return is_strong(language_mode())
-                   ? isolate()->builtins()->LoadIC_Normal_Strong()
-                   : isolate()->builtins()->LoadIC_Normal();
+        return isolate()->builtins()->LoadIC_Normal();
       }
 
       // -------------- Fields --------------
@@ -1349,8 +1338,7 @@ Handle<Code> KeyedLoadIC::LoadElementStub(Handle<HeapObject> receiver) {
 
   CodeHandleList handlers(target_receiver_maps.length());
   ElementHandlerCompiler compiler(isolate());
-  compiler.CompileElementHandlers(&target_receiver_maps, &handlers,
-                                  language_mode());
+  compiler.CompileElementHandlers(&target_receiver_maps, &handlers);
   ConfigureVectorState(Handle<Name>::null(), &target_receiver_maps, &handlers);
   return null_handle;
 }
@@ -1361,8 +1349,7 @@ MaybeHandle<Object> KeyedLoadIC::Load(Handle<Object> object,
   if (MigrateDeprecated(object)) {
     Handle<Object> result;
     ASSIGN_RETURN_ON_EXCEPTION(
-        isolate(), result,
-        Runtime::GetObjectProperty(isolate(), object, key, language_mode()),
+        isolate(), result, Runtime::GetObjectProperty(isolate(), object, key),
         Object);
     return result;
   }
@@ -1378,7 +1365,8 @@ MaybeHandle<Object> KeyedLoadIC::Load(Handle<Object> object,
     ASSIGN_RETURN_ON_EXCEPTION(isolate(), load_handle,
                                LoadIC::Load(object, Handle<Name>::cast(key)),
                                Object);
-  } else if (FLAG_use_ic && !object->IsAccessCheckNeeded()) {
+  } else if (FLAG_use_ic && !object->IsAccessCheckNeeded() &&
+             !object->IsJSValue()) {
     if (object->IsJSObject() || (object->IsString() && key->IsNumber())) {
       Handle<HeapObject> receiver = Handle<HeapObject>::cast(object);
       if (object->IsString() || key->IsSmi()) stub = LoadElementStub(receiver);
@@ -1399,10 +1387,9 @@ MaybeHandle<Object> KeyedLoadIC::Load(Handle<Object> object,
   if (!load_handle.is_null()) return load_handle;
 
   Handle<Object> result;
-  ASSIGN_RETURN_ON_EXCEPTION(
-      isolate(), result,
-      Runtime::GetObjectProperty(isolate(), object, key, language_mode()),
-      Object);
+  ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                             Runtime::GetObjectProperty(isolate(), object, key),
+                             Object);
   return result;
 }
 
@@ -1410,9 +1397,10 @@ MaybeHandle<Object> KeyedLoadIC::Load(Handle<Object> object,
 bool StoreIC::LookupForWrite(LookupIterator* it, Handle<Object> value,
                              JSReceiver::StoreFromKeyed store_mode) {
   // Disable ICs for non-JSObjects for now.
-  Handle<Object> receiver = it->GetReceiver();
-  if (!receiver->IsJSObject()) return false;
-  DCHECK(!Handle<JSObject>::cast(receiver)->map()->is_deprecated());
+  Handle<Object> object = it->GetReceiver();
+  if (!object->IsJSObject()) return false;
+  Handle<JSObject> receiver = Handle<JSObject>::cast(object);
+  DCHECK(!receiver->map()->is_deprecated());
 
   for (; it->IsFound(); it->Next()) {
     switch (it->state()) {
@@ -1451,21 +1439,24 @@ bool StoreIC::LookupForWrite(LookupIterator* it, Handle<Object> value,
         }
 
         // Receiver != holder.
-        PrototypeIterator iter(it->isolate(), receiver);
         if (receiver->IsJSGlobalProxy()) {
+          PrototypeIterator iter(it->isolate(), receiver);
           return it->GetHolder<Object>().is_identical_to(
               PrototypeIterator::GetCurrent(iter));
         }
 
         if (it->HolderIsReceiverOrHiddenPrototype()) return false;
 
-        it->PrepareTransitionToDataProperty(value, NONE, store_mode);
+        if (it->ExtendingNonExtensible(receiver)) return false;
+        it->PrepareTransitionToDataProperty(receiver, value, NONE, store_mode);
         return it->IsCacheableTransition();
       }
     }
   }
 
-  it->PrepareTransitionToDataProperty(value, NONE, store_mode);
+  receiver = it->GetStoreTarget();
+  if (it->ExtendingNonExtensible(receiver)) return false;
+  it->PrepareTransitionToDataProperty(receiver, value, NONE, store_mode);
   return it->IsCacheableTransition();
 }
 
@@ -1510,7 +1501,7 @@ MaybeHandle<Object> StoreIC::Store(Handle<Object> object, Handle<Name> name,
       }
 
       Handle<Object> previous_value =
-          FixedArray::get(script_context, lookup_result.slot_index);
+          FixedArray::get(*script_context, lookup_result.slot_index, isolate());
 
       if (*previous_value == *isolate()->factory()->the_hole_value()) {
         // Do not install stubs and stay pre-monomorphic for
@@ -1564,18 +1555,18 @@ MaybeHandle<Object> StoreIC::Store(Handle<Object> object, Handle<Name> name,
   return value;
 }
 
-
 Handle<Code> CallIC::initialize_stub(Isolate* isolate, int argc,
-                                     ConvertReceiverMode mode) {
-  CallICTrampolineStub stub(isolate, CallICState(argc, mode));
+                                     ConvertReceiverMode mode,
+                                     TailCallMode tail_call_mode) {
+  CallICTrampolineStub stub(isolate, CallICState(argc, mode, tail_call_mode));
   Handle<Code> code = stub.GetCode();
   return code;
 }
 
-
 Handle<Code> CallIC::initialize_stub_in_optimized_code(
-    Isolate* isolate, int argc, ConvertReceiverMode mode) {
-  CallICStub stub(isolate, CallICState(argc, mode));
+    Isolate* isolate, int argc, ConvertReceiverMode mode,
+    TailCallMode tail_call_mode) {
+  CallICStub stub(isolate, CallICState(argc, mode, tail_call_mode));
   Handle<Code> code = stub.GetCode();
   return code;
 }
@@ -1733,9 +1724,8 @@ Handle<Code> StoreIC::CompileHandler(LookupIterator* lookup,
         break;
       }
       Handle<Object> accessors = lookup->GetAccessors();
-      if (accessors->IsExecutableAccessorInfo()) {
-        Handle<ExecutableAccessorInfo> info =
-            Handle<ExecutableAccessorInfo>::cast(accessors);
+      if (accessors->IsAccessorInfo()) {
+        Handle<AccessorInfo> info = Handle<AccessorInfo>::cast(accessors);
         if (v8::ToCData<Address>(info->setter()) == 0) {
           TRACE_GENERIC_IC(isolate(), "StoreIC", "setter == 0");
           break;
@@ -1746,13 +1736,14 @@ Handle<Code> StoreIC::CompileHandler(LookupIterator* lookup,
                            "special data property in prototype chain");
           break;
         }
-        if (!ExecutableAccessorInfo::IsCompatibleReceiverMap(isolate(), info,
-                                                             receiver_map())) {
+        if (!AccessorInfo::IsCompatibleReceiverMap(isolate(), info,
+                                                   receiver_map())) {
           TRACE_GENERIC_IC(isolate(), "StoreIC", "incompatible receiver type");
           break;
         }
         NamedStoreHandlerCompiler compiler(isolate(), receiver_map(), holder);
-        return compiler.CompileStoreCallback(receiver, lookup->name(), info);
+        return compiler.CompileStoreCallback(receiver, lookup->name(), info,
+                                             language_mode());
       } else if (accessors->IsAccessorPair()) {
         Handle<Object> setter(Handle<AccessorPair>::cast(accessors)->setter(),
                               isolate());
@@ -1800,9 +1791,8 @@ Handle<Code> StoreIC::CompileHandler(LookupIterator* lookup,
         bool use_stub = true;
         if (lookup->representation().IsHeapObject()) {
           // Only use a generic stub if no types need to be tracked.
-          Handle<HeapType> field_type = lookup->GetFieldType();
-          HeapType::Iterator<Map> it = field_type->Classes();
-          use_stub = it.Done();
+          Handle<FieldType> field_type = lookup->GetFieldType();
+          use_stub = !field_type->IsClass();
         }
         if (use_stub) {
           StoreFieldStub stub(isolate(), lookup->GetFieldIndex(),
@@ -2504,60 +2494,52 @@ MaybeHandle<Object> BinaryOpIC::Transition(
     default:
       UNREACHABLE();
     case Token::ADD:
-      ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::Add(isolate(), left, right, state.strength()), Object);
+      ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                                 Object::Add(isolate(), left, right), Object);
       break;
     case Token::SUB:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::Subtract(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::Subtract(isolate(), left, right), Object);
       break;
     case Token::MUL:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::Multiply(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::Multiply(isolate(), left, right), Object);
       break;
     case Token::DIV:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::Divide(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::Divide(isolate(), left, right), Object);
       break;
     case Token::MOD:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::Modulus(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::Modulus(isolate(), left, right), Object);
       break;
     case Token::BIT_OR:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::BitwiseOr(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::BitwiseOr(isolate(), left, right), Object);
       break;
     case Token::BIT_AND:
-      ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::BitwiseAnd(isolate(), left, right, state.strength()), Object);
+      ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                                 Object::BitwiseAnd(isolate(), left, right),
+                                 Object);
       break;
     case Token::BIT_XOR:
-      ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::BitwiseXor(isolate(), left, right, state.strength()), Object);
+      ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                                 Object::BitwiseXor(isolate(), left, right),
+                                 Object);
       break;
     case Token::SAR:
-      ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::ShiftRight(isolate(), left, right, state.strength()), Object);
+      ASSIGN_RETURN_ON_EXCEPTION(isolate(), result,
+                                 Object::ShiftRight(isolate(), left, right),
+                                 Object);
       break;
     case Token::SHR:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::ShiftRightLogical(isolate(), left, right, state.strength()),
+          isolate(), result, Object::ShiftRightLogical(isolate(), left, right),
           Object);
       break;
     case Token::SHL:
       ASSIGN_RETURN_ON_EXCEPTION(
-          isolate(), result,
-          Object::ShiftLeft(isolate(), left, right, state.strength()), Object);
+          isolate(), result, Object::ShiftLeft(isolate(), left, right), Object);
       break;
   }
 
@@ -2653,10 +2635,8 @@ RUNTIME_FUNCTION(Runtime_BinaryOpIC_MissWithAllocationSite) {
   return *result;
 }
 
-
-Code* CompareIC::GetRawUninitialized(Isolate* isolate, Token::Value op,
-                                     Strength strength) {
-  CompareICStub stub(isolate, op, strength, CompareICState::UNINITIALIZED,
+Code* CompareIC::GetRawUninitialized(Isolate* isolate, Token::Value op) {
+  CompareICStub stub(isolate, op, CompareICState::UNINITIALIZED,
                      CompareICState::UNINITIALIZED,
                      CompareICState::UNINITIALIZED);
   Code* code = NULL;
@@ -2664,10 +2644,8 @@ Code* CompareIC::GetRawUninitialized(Isolate* isolate, Token::Value op,
   return code;
 }
 
-
-Handle<Code> CompareIC::GetUninitialized(Isolate* isolate, Token::Value op,
-                                         Strength strength) {
-  CompareICStub stub(isolate, op, strength, CompareICState::UNINITIALIZED,
+Handle<Code> CompareIC::GetUninitialized(Isolate* isolate, Token::Value op) {
+  CompareICStub stub(isolate, op, CompareICState::UNINITIALIZED,
                      CompareICState::UNINITIALIZED,
                      CompareICState::UNINITIALIZED);
   return stub.GetCode();
@@ -2684,8 +2662,7 @@ Code* CompareIC::UpdateCaches(Handle<Object> x, Handle<Object> y) {
   CompareICState::State state = CompareICState::TargetState(
       old_stub.state(), old_stub.left(), old_stub.right(), op_,
       HasInlinedSmiCode(address()), x, y);
-  CompareICStub stub(isolate(), op_, old_stub.strength(), new_left, new_right,
-                     state);
+  CompareICStub stub(isolate(), op_, new_left, new_right, state);
   if (state == CompareICState::KNOWN_RECEIVER) {
     stub.set_known_map(
         Handle<Map>(Handle<JSReceiver>::cast(x)->map(), isolate()));
@@ -2740,15 +2717,6 @@ void CompareNilIC::Clear(Address address, Code* target, Address constant_pool) {
 }
 
 
-Handle<Object> CompareNilIC::DoCompareNilSlow(Isolate* isolate, NilValue nil,
-                                              Handle<Object> object) {
-  if (object->IsNull() || object->IsUndefined()) {
-    return isolate->factory()->true_value();
-  }
-  return isolate->factory()->ToBoolean(object->IsUndetectableObject());
-}
-
-
 Handle<Object> CompareNilIC::CompareNil(Handle<Object> object) {
   ExtraICState extra_ic_state = target()->extra_ic_state();
 
@@ -2759,8 +2727,6 @@ Handle<Object> CompareNilIC::CompareNil(Handle<Object> object) {
   bool already_monomorphic = stub.IsMonomorphic();
 
   stub.UpdateStatus(object);
-
-  NilValue nil = stub.nil_value();
 
   // Find or create the specialized stub to support the new set of types.
   Handle<Code> code;
@@ -2773,7 +2739,7 @@ Handle<Object> CompareNilIC::CompareNil(Handle<Object> object) {
     code = stub.GetCode();
   }
   set_target(*code);
-  return DoCompareNilSlow(isolate(), nil, object);
+  return isolate()->factory()->ToBoolean(object->IsUndetectableObject());
 }
 
 
@@ -2818,13 +2784,13 @@ RUNTIME_FUNCTION(Runtime_StoreCallbackProperty) {
   Handle<HeapObject> callback_or_cell = args.at<HeapObject>(2);
   Handle<Name> name = args.at<Name>(3);
   Handle<Object> value = args.at<Object>(4);
+  CONVERT_LANGUAGE_MODE_ARG_CHECKED(language_mode, 5);
   HandleScope scope(isolate);
 
-  Handle<ExecutableAccessorInfo> callback(
+  Handle<AccessorInfo> callback(
       callback_or_cell->IsWeakCell()
-          ? ExecutableAccessorInfo::cast(
-                WeakCell::cast(*callback_or_cell)->value())
-          : ExecutableAccessorInfo::cast(*callback_or_cell));
+          ? AccessorInfo::cast(WeakCell::cast(*callback_or_cell)->value())
+          : AccessorInfo::cast(*callback_or_cell));
 
   DCHECK(callback->IsCompatibleReceiver(*receiver));
 
@@ -2834,8 +2800,10 @@ RUNTIME_FUNCTION(Runtime_StoreCallbackProperty) {
   DCHECK(fun != NULL);
 
   LOG(isolate, ApiNamedPropertyAccess("store", *receiver, *name));
+  Object::ShouldThrow should_throw =
+      is_sloppy(language_mode) ? Object::DONT_THROW : Object::THROW_ON_ERROR;
   PropertyCallbackArguments custom_args(isolate, callback->data(), *receiver,
-                                        *holder);
+                                        *holder, should_throw);
   custom_args.Call(fun, v8::Utils::ToLocal(name), v8::Utils::ToLocal(value));
   RETURN_FAILURE_IF_SCHEDULED_EXCEPTION(isolate);
   return *value;
@@ -2914,9 +2882,10 @@ RUNTIME_FUNCTION(Runtime_StorePropertyWithInterceptor) {
   Handle<Object> value = args.at<Object>(2);
 #ifdef DEBUG
   PrototypeIterator iter(isolate, receiver,
-                         PrototypeIterator::START_AT_RECEIVER);
+                         PrototypeIterator::START_AT_RECEIVER,
+                         PrototypeIterator::END_AT_NON_HIDDEN);
   bool found = false;
-  for (; !iter.IsAtEnd(PrototypeIterator::END_AT_NON_HIDDEN); iter.Advance()) {
+  for (; !iter.IsAtEnd(); iter.Advance()) {
     Handle<Object> current = PrototypeIterator::GetCurrent(iter);
     if (current->IsJSObject() &&
         Handle<JSObject>::cast(current)->HasNamedInterceptor()) {
@@ -2941,11 +2910,8 @@ RUNTIME_FUNCTION(Runtime_LoadElementWithInterceptor) {
   DCHECK(args.smi_at(1) >= 0);
   uint32_t index = args.smi_at(1);
   Handle<Object> result;
-  // TODO(conradw): Investigate strong mode semantics for this.
-  LanguageMode language_mode = SLOPPY;
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, result,
-      Object::GetElement(isolate, receiver, index, language_mode));
+      isolate, result, Object::GetElement(isolate, receiver, index));
   return *result;
 }
 

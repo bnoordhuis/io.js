@@ -329,9 +329,7 @@ class Local {
   friend class PersistentValueMapBase;
   template<class F1, class F2> friend class PersistentValueVector;
 
-  template <class S>
-  V8_INLINE Local(S* that)
-      : val_(that) {}
+  explicit V8_INLINE Local(T* that) : val_(that) {}
   V8_INLINE static Local<T> New(Isolate* isolate, T* that);
   T* val_;
 };
@@ -434,7 +432,10 @@ class WeakCallbackInfo {
     return internal_fields_[1];
   }
 
-  bool IsFirstPass() const { return callback_ != nullptr; }
+  V8_DEPRECATED("Not realiable once SetSecondPassCallback() was used.",
+                bool IsFirstPass() const) {
+    return callback_ != nullptr;
+  }
 
   // When first called, the embedder MUST Reset() the Global which triggered the
   // callback. The Global itself is unusable for anything else. No v8 other api
@@ -787,7 +788,7 @@ template <class T, class M> class Persistent : public PersistentBase<T> {
   template<class F1, class F2> friend class Persistent;
   template<class F> friend class ReturnValue;
 
-  template <class S> V8_INLINE Persistent(S* that) : PersistentBase<T>(that) { }
+  explicit V8_INLINE Persistent(T* that) : PersistentBase<T>(that) {}
   V8_INLINE T* operator*() const { return this->val_; }
   template<class S, class M2>
   V8_INLINE void Copy(const Persistent<S, M2>& that);
@@ -886,7 +887,7 @@ using UniquePersistent = Global<T>;
  */
 class V8_EXPORT HandleScope {
  public:
-  HandleScope(Isolate* isolate);
+  explicit HandleScope(Isolate* isolate);
 
   ~HandleScope();
 
@@ -939,7 +940,7 @@ class V8_EXPORT HandleScope {
  */
 class V8_EXPORT EscapableHandleScope : public HandleScope {
  public:
-  EscapableHandleScope(Isolate* isolate);
+  explicit EscapableHandleScope(Isolate* isolate);
   V8_INLINE ~EscapableHandleScope() {}
 
   /**
@@ -1609,7 +1610,8 @@ class V8_EXPORT StackFrame {
   /**
    * Returns the name of the resource that contains the script for the
    * function for this StackFrame or sourceURL value if the script name
-   * is undefined and its source ends with //# sourceURL=... string.
+   * is undefined and its source ends with //# sourceURL=... string or
+   * deprecated //@ sourceURL=... string.
    */
   Local<String> GetScriptNameOrSourceURL() const;
 
@@ -3146,7 +3148,8 @@ class FunctionCallbackInfo {
  public:
   V8_INLINE int Length() const;
   V8_INLINE Local<Value> operator[](int i) const;
-  V8_INLINE Local<Function> Callee() const;
+  V8_INLINE V8_DEPRECATED("Use Data() to explicitly pass Callee instead",
+                          Local<Function> Callee() const);
   V8_INLINE Local<Object> This() const;
   V8_INLINE Local<Object> Holder() const;
   V8_INLINE bool IsConstructCall() const;
@@ -3190,19 +3193,21 @@ class PropertyCallbackInfo {
   V8_INLINE Local<Object> This() const;
   V8_INLINE Local<Object> Holder() const;
   V8_INLINE ReturnValue<T> GetReturnValue() const;
+  V8_INLINE bool ShouldThrowOnError() const;
   // This shouldn't be public, but the arm compiler needs it.
-  static const int kArgsLength = 6;
+  static const int kArgsLength = 7;
 
  protected:
   friend class MacroAssembler;
   friend class internal::PropertyCallbackArguments;
   friend class internal::CustomArguments<PropertyCallbackInfo>;
-  static const int kHolderIndex = 0;
-  static const int kIsolateIndex = 1;
-  static const int kReturnValueDefaultValueIndex = 2;
-  static const int kReturnValueIndex = 3;
-  static const int kDataIndex = 4;
-  static const int kThisIndex = 5;
+  static const int kShouldThrowOnErrorIndex = 0;
+  static const int kHolderIndex = 1;
+  static const int kIsolateIndex = 2;
+  static const int kReturnValueDefaultValueIndex = 3;
+  static const int kReturnValueIndex = 4;
+  static const int kDataIndex = 5;
+  static const int kThisIndex = 6;
 
   V8_INLINE PropertyCallbackInfo(internal::Object** args) : args_(args) {}
   internal::Object** args_;
@@ -4321,8 +4326,10 @@ enum AccessType {
  * object.
  */
 typedef bool (*AccessCheckCallback)(Local<Context> accessing_context,
-                                    Local<Object> accessed_object);
-
+                                    Local<Object> accessed_object,
+                                    Local<Value> data);
+typedef bool (*DeprecatedAccessCheckCallback)(Local<Context> accessing_context,
+                                              Local<Object> accessed_object);
 
 /**
  * Returns true if cross-context access should be allowed to the named
@@ -4752,6 +4759,10 @@ class V8_EXPORT ObjectTemplate : public Template {
    */
   void SetAccessCheckCallback(AccessCheckCallback callback,
                               Local<Value> data = Local<Value>());
+  V8_DEPRECATE_SOON(
+      "Use SetAccessCheckCallback with new AccessCheckCallback signature.",
+      void SetAccessCheckCallback(DeprecatedAccessCheckCallback callback,
+                                  Local<Value> data = Local<Value>()));
 
   V8_DEPRECATED(
       "Use SetAccessCheckCallback instead",
@@ -5454,6 +5465,10 @@ class V8_EXPORT Isolate {
     kPromiseChain = 17,
     kPromiseAccept = 18,
     kPromiseDefer = 19,
+    kHtmlCommentInExternalScript = 20,
+    kHtmlComment = 21,
+    kSloppyModeBlockScopedFunctionRedefinition = 22,
+    kForInInitializer = 23,
     kUseCounterFeatureCount  // This enum value must be last.
   };
 
@@ -7131,7 +7146,7 @@ class Internals {
   static const int kNodeIsPartiallyDependentShift = 4;
   static const int kNodeIsActiveShift = 4;
 
-  static const int kJSObjectType = 0xb7;
+  static const int kJSObjectType = 0xb5;
   static const int kFirstNonstringType = 0x80;
   static const int kOddballType = 0x83;
   static const int kForeignType = 0x87;
@@ -8259,6 +8274,12 @@ Local<Object> PropertyCallbackInfo<T>::Holder() const {
 template<typename T>
 ReturnValue<T> PropertyCallbackInfo<T>::GetReturnValue() const {
   return ReturnValue<T>(&args_[kReturnValueIndex]);
+}
+
+template <typename T>
+bool PropertyCallbackInfo<T>::ShouldThrowOnError() const {
+  typedef internal::Internals I;
+  return args_[kShouldThrowOnErrorIndex] != I::IntToSmi(0);
 }
 
 

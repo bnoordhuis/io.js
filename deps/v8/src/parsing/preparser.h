@@ -197,6 +197,8 @@ class PreParserExpression {
            ExpressionTypeField::decode(code_) == kAssignment;
   }
 
+  bool IsRewritableAssignmentExpression() const { return IsAssignment(); }
+
   bool IsObjectLiteral() const {
     return TypeField::decode(code_) == kObjectLiteralExpression;
   }
@@ -278,12 +280,6 @@ class PreParserExpression {
 
   int position() const { return RelocInfo::kNoPosition; }
   void set_function_token_position(int position) {}
-
-  // Parenthesized expressions in the form `( Expression )`.
-  void set_is_parenthesized() {
-    code_ = ParenthesizedField::update(code_, true);
-  }
-  bool is_parenthesized() const { return ParenthesizedField::decode(code_); }
 
  private:
   enum Type {
@@ -550,7 +546,8 @@ class PreParserFactory {
     return PreParserExpression::Default();
   }
 
-  PreParserExpression NewSpread(PreParserExpression expression, int pos) {
+  PreParserExpression NewSpread(PreParserExpression expression, int pos,
+                                int expr_pos) {
     return PreParserExpression::Spread(expression);
   }
 
@@ -797,8 +794,9 @@ class PreParserTraits {
     return PreParserExpression::Default();
   }
 
-  static PreParserExpression DefaultConstructor(bool call_super, Scope* scope,
-                                                int pos, int end_pos) {
+  static PreParserExpression FunctionSentExpression(Scope* scope,
+                                                    PreParserFactory* factory,
+                                                    int pos) {
     return PreParserExpression::Default();
   }
 
@@ -935,12 +933,12 @@ class PreParserTraits {
   inline PreParserExpression RewriteNonPattern(
       PreParserExpression expr, const ExpressionClassifier* classifier,
       bool* ok);
-  inline PreParserExpression RewriteNonPatternArguments(
-      PreParserExpression args, const ExpressionClassifier* classifier,
-      bool* ok);
   inline PreParserExpression RewriteNonPatternObjectLiteralProperty(
       PreParserExpression property, const ExpressionClassifier* classifier,
       bool* ok);
+
+  inline PreParserExpression RewriteYieldStar(
+      PreParserExpression generator, PreParserExpression expr, int pos);
 
  private:
   PreParser* pre_parser_;
@@ -1131,19 +1129,18 @@ PreParserExpression PreParserTraits::RewriteNonPattern(
 }
 
 
-PreParserExpression PreParserTraits::RewriteNonPatternArguments(
-    PreParserExpression args, const ExpressionClassifier* classifier,
-    bool* ok) {
-  pre_parser_->ValidateExpression(classifier, ok);
-  return args;
-}
-
-
 PreParserExpression PreParserTraits::RewriteNonPatternObjectLiteralProperty(
     PreParserExpression property, const ExpressionClassifier* classifier,
     bool* ok) {
   pre_parser_->ValidateExpression(classifier, ok);
   return property;
+}
+
+
+PreParserExpression PreParserTraits::RewriteYieldStar(
+    PreParserExpression generator, PreParserExpression expression, int pos) {
+  return pre_parser_->factory()->NewYield(
+      generator, expression, Yield::kDelegating, pos);
 }
 
 

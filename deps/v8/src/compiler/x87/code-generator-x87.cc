@@ -360,18 +360,41 @@ void CodeGenerator::AssemblePrepareTailCall(int stack_param_delta) {
   frame_access_state()->SetFrameAccessToSP();
 }
 
+thread_local bool is_handler_entry_point = false;
+static void DoEnsureSpaceForLazyDeopt(CompilationInfo* info,
+                                      MacroAssembler* masm,
+                                      int last_lazy_deopt_pc) {
+  if (!info->ShouldEnsureSpaceForLazyDeopt()) {
+    return;
+  }
+
+  int space_needed = Deoptimizer::patch_size();
+  // Ensure that we have enough space after the previous lazy-bailout
+  // instruction for patching the code here.
+  int current_pc = masm->pc_offset();
+  if (current_pc < last_lazy_deopt_pc + space_needed) {
+    int padding_size = last_lazy_deopt_pc + space_needed - current_pc;
+    masm->Nop(padding_size);
+  }
+}
 
 // Assembles an instruction after register allocation, producing machine code.
 void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
   X87OperandConverter i(this, instr);
+  if (is_handler_entry_point) {
+    // Lazy Bailout entry, need to re-initialize FPU state.
+    __ fninit();
+    __ fld1();
+    is_handler_entry_point = false;
+  }
 
   switch (ArchOpcodeField::decode(instr->opcode())) {
     case kArchCallCodeObject: {
+      DoEnsureSpaceForLazyDeopt(info(), masm(), last_lazy_deopt_pc_);
       if (FLAG_debug_code && FLAG_enable_slow_asserts) {
         __ VerifyX87StackDepth(1);
       }
       __ fstp(0);
-      EnsureSpaceForLazyDeopt();
       if (HasImmediateInput(instr, 0)) {
         Handle<Code> code = Handle<Code>::cast(i.InputHeapObject(0));
         __ call(code, RelocInfo::CODE_TARGET);
@@ -416,7 +439,7 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       break;
     }
     case kArchCallJSFunction: {
-      EnsureSpaceForLazyDeopt();
+      DoEnsureSpaceForLazyDeopt(info(), masm(), last_lazy_deopt_pc_);
       Register func = i.InputRegister(0);
       if (FLAG_debug_code) {
         // Check the function's context matches the context argument.
@@ -460,14 +483,6 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       AssembleDeconstructActivationRecord(stack_param_delta);
       __ jmp(FieldOperand(func, JSFunction::kCodeEntryOffset));
       frame_access_state()->ClearSPDelta();
-      break;
-    }
-    case kArchLazyBailout: {
-      EnsureSpaceForLazyDeopt();
-      RecordCallPosition(instr);
-      // Lazy Bailout entry, need to re-initialize FPU state.
-      __ fninit();
-      __ fld1();
       break;
     }
     case kArchPrepareCallCFunction: {
@@ -559,6 +574,13 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kArchStackPointer:
       __ mov(i.OutputRegister(), esp);
       break;
+    case kArchParentFramePointer:
+      if (frame_access_state()->frame()->needs_frame()) {
+        __ mov(i.OutputRegister(), Operand(ebp, 0));
+      } else {
+        __ mov(i.OutputRegister(), ebp);
+      }
+      break;
     case kArchTruncateDoubleToI: {
       if (!instr->InputAt(0)->IsDoubleRegister()) {
         __ fld_d(i.InputOperand(0));
@@ -585,6 +607,18 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
                        MemoryChunk::kPointersFromHereAreInterestingMask,
                        not_zero, ool->entry());
       __ bind(ool->exit());
+      break;
+    }
+    case kArchStackSlot: {
+      FrameOffset offset =
+          frame_access_state()->GetFrameOffset(i.InputInt32(0));
+      Register base;
+      if (offset.from_stack_pointer()) {
+        base = esp;
+      } else {
+        base = ebp;
+      }
+      __ lea(i.OutputRegister(), Operand(base, offset.offset()));
       break;
     }
     case kX87Add:
@@ -1062,6 +1096,66 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       __ lea(esp, Operand(esp, kDoubleSize));
       break;
     }
+    case kX87Int32ToFloat32: {
+      InstructionOperand* input = instr->InputAt(0);
+      DCHECK(input->IsRegister() || input->IsStackSlot());
+      if (FLAG_debug_code && FLAG_enable_slow_asserts) {
+        __ VerifyX87StackDepth(1);
+      }
+      __ fstp(0);
+      if (input->IsRegister()) {
+        Register input_reg = i.InputRegister(0);
+        __ push(input_reg);
+        __ fild_s(Operand(esp, 0));
+        __ pop(input_reg);
+      } else {
+        __ fild_s(i.InputOperand(0));
+      }
+      break;
+    }
+    case kX87Uint32ToFloat32: {
+      InstructionOperand* input = instr->InputAt(0);
+      DCHECK(input->IsRegister() || input->IsStackSlot());
+      if (FLAG_debug_code && FLAG_enable_slow_asserts) {
+        __ VerifyX87StackDepth(1);
+      }
+      __ fstp(0);
+      Label msb_set_src;
+      Label jmp_return;
+      // Put input integer into eax(tmporarilly)
+      __ push(eax);
+      if (input->IsRegister())
+        __ mov(eax, i.InputRegister(0));
+      else
+        __ mov(eax, i.InputOperand(0));
+
+      __ test(eax, eax);
+      __ j(sign, &msb_set_src, Label::kNear);
+      __ push(eax);
+      __ fild_s(Operand(esp, 0));
+      __ pop(eax);
+
+      __ jmp(&jmp_return, Label::kNear);
+      __ bind(&msb_set_src);
+      // Need another temp reg
+      __ push(ebx);
+      __ mov(ebx, eax);
+      __ shr(eax, 1);
+      // Recover the least significant bit to avoid rounding errors.
+      __ and_(ebx, Immediate(1));
+      __ or_(eax, ebx);
+      __ push(eax);
+      __ fild_s(Operand(esp, 0));
+      __ pop(eax);
+      __ fld(0);
+      __ faddp();
+      // Restore the ebx
+      __ pop(ebx);
+      __ bind(&jmp_return);
+      // Restore the eax
+      __ pop(eax);
+      break;
+    }
     case kX87Int32ToFloat64: {
       InstructionOperand* input = instr->InputAt(0);
       DCHECK(input->IsRegister() || input->IsStackSlot());
@@ -1102,6 +1196,36 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       }
       __ fstp(0);
       __ LoadUint32NoSSE2(i.InputRegister(0));
+      break;
+    }
+    case kX87Float32ToInt32: {
+      if (!instr->InputAt(0)->IsDoubleRegister()) {
+        __ fld_s(i.InputOperand(0));
+      }
+      __ TruncateX87TOSToI(i.OutputRegister(0));
+      if (!instr->InputAt(0)->IsDoubleRegister()) {
+        __ fstp(0);
+      }
+      break;
+    }
+    case kX87Float32ToUint32: {
+      if (!instr->InputAt(0)->IsDoubleRegister()) {
+        __ fld_s(i.InputOperand(0));
+      }
+      Label success;
+      __ TruncateX87TOSToI(i.OutputRegister(0));
+      __ test(i.OutputRegister(0), i.OutputRegister(0));
+      __ j(positive, &success);
+      __ push(Immediate(INT32_MIN));
+      __ fild_s(Operand(esp, 0));
+      __ lea(esp, Operand(esp, kPointerSize));
+      __ faddp();
+      __ TruncateX87TOSToI(i.OutputRegister(0));
+      __ or_(i.OutputRegister(0), Immediate(0x80000000));
+      __ bind(&success);
+      if (!instr->InputAt(0)->IsDoubleRegister()) {
+        __ fstp(0);
+      }
       break;
     }
     case kX87Float64ToInt32: {
@@ -1817,8 +1941,6 @@ void CodeGenerator::AssemblePrologue() {
     // remaining stack slots.
     if (FLAG_code_comments) __ RecordComment("-- OSR entrypoint --");
     osr_pc_offset_ = __ pc_offset();
-    // TODO(titzer): cannot address target function == local #-1
-    __ mov(edi, Operand(ebp, JavaScriptFrameConstants::kFunctionOffset));
     stack_shrink_slots -= OsrHelper(info()).UnoptimizedFrameSlots();
   }
 
@@ -2117,18 +2239,8 @@ void CodeGenerator::AddNopForSmiCodeInlining() { __ nop(); }
 
 
 void CodeGenerator::EnsureSpaceForLazyDeopt() {
-  if (!info()->ShouldEnsureSpaceForLazyDeopt()) {
-    return;
-  }
-
-  int space_needed = Deoptimizer::patch_size();
-  // Ensure that we have enough space after the previous lazy-bailout
-  // instruction for patching the code here.
-  int current_pc = masm()->pc_offset();
-  if (current_pc < last_lazy_deopt_pc_ + space_needed) {
-    int padding_size = last_lazy_deopt_pc_ + space_needed - current_pc;
-    __ Nop(padding_size);
-  }
+  is_handler_entry_point = true;
+  DoEnsureSpaceForLazyDeopt(info(), masm(), last_lazy_deopt_pc_);
 }
 
 #undef __

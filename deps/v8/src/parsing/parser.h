@@ -513,8 +513,8 @@ class ParserTraits {
                                  int pos);
   Expression* NewTargetExpression(Scope* scope, AstNodeFactory* factory,
                                   int pos);
-  Expression* DefaultConstructor(bool call_super, Scope* scope, int pos,
-                                 int end_pos, LanguageMode language_mode);
+  Expression* FunctionSentExpression(Scope* scope, AstNodeFactory* factory,
+                                     int pos);
   Literal* ExpressionFromLiteral(Token::Value token, int pos, Scanner* scanner,
                                  AstNodeFactory* factory);
   Expression* ExpressionFromIdentifier(const AstRawString* name,
@@ -652,15 +652,18 @@ class ParserTraits {
   // Rewrite expressions that are not used as patterns
   V8_INLINE Expression* RewriteNonPattern(
       Expression* expr, const ExpressionClassifier* classifier, bool* ok);
-  V8_INLINE ZoneList<Expression*>* RewriteNonPatternArguments(
-      ZoneList<Expression*>* args, const ExpressionClassifier* classifier,
-      bool* ok);
   V8_INLINE ObjectLiteralProperty* RewriteNonPatternObjectLiteralProperty(
       ObjectLiteralProperty* property, const ExpressionClassifier* classifier,
       bool* ok);
 
+  Expression* RewriteYieldStar(
+      Expression* generator, Expression* expression, int pos);
+
  private:
   Parser* parser_;
+
+  void BuildIteratorClose(ZoneList<Statement*>* statements, Variable* iterator,
+                          Maybe<Variable*> input, Maybe<Variable*> output);
 };
 
 
@@ -744,6 +747,9 @@ class Parser : public ParserBase<ParserTraits> {
                                    bool* ok);
   Statement* ParseFunctionDeclaration(ZoneList<const AstRawString*>* names,
                                       bool* ok);
+  Statement* ParseFunctionDeclaration(int pos, bool is_generator,
+                                      ZoneList<const AstRawString*>* names,
+                                      bool* ok);
   Statement* ParseClassDeclaration(ZoneList<const AstRawString*>* names,
                                    bool* ok);
   Statement* ParseNativeDeclaration(bool* ok);
@@ -754,6 +760,7 @@ class Parser : public ParserBase<ParserTraits> {
                                 ZoneList<const AstRawString*>* names,
                                 bool* ok);
   DoExpression* ParseDoExpression(bool* ok);
+  Expression* ParseYieldStarExpression(bool* ok);
 
   struct DeclarationDescriptor {
     enum Kind { NORMAL, PARAMETER };
@@ -761,7 +768,6 @@ class Parser : public ParserBase<ParserTraits> {
     Scope* scope;
     Scope* hoist_scope;
     VariableMode mode;
-    bool needs_init;
     int declaration_pos;
     int initialization_pos;
     Kind declaration_kind;
@@ -872,10 +878,10 @@ class Parser : public ParserBase<ParserTraits> {
     bool* ok_;
   };
 
-
-  void ParseVariableDeclarations(VariableDeclarationContext var_context,
-                                 DeclarationParsingResult* parsing_result,
-                                 bool* ok);
+  Block* ParseVariableDeclarations(VariableDeclarationContext var_context,
+                                   DeclarationParsingResult* parsing_result,
+                                   ZoneList<const AstRawString*>* names,
+                                   bool* ok);
   Statement* ParseExpressionOrLabelledStatement(
       ZoneList<const AstRawString*>* labels, bool* ok);
   IfStatement* ParseIfStatement(ZoneList<const AstRawString*>* labels,
@@ -896,6 +902,8 @@ class Parser : public ParserBase<ParserTraits> {
   Statement* ParseForStatement(ZoneList<const AstRawString*>* labels, bool* ok);
   Statement* ParseThrowStatement(bool* ok);
   Expression* MakeCatchContext(Handle<String> id, VariableProxy* value);
+  class DontCollectExpressionsInTailPositionScope;
+  class CollectExpressionsInTailPositionToListScope;
   TryStatement* ParseTryStatement(bool* ok);
   DebuggerStatement* ParseDebuggerStatement(bool* ok);
 
@@ -910,9 +918,9 @@ class Parser : public ParserBase<ParserTraits> {
                                   Expression* subject, Statement* body,
                                   bool is_destructuring);
   Statement* DesugarLexicalBindingsInForStatement(
-      Scope* inner_scope, bool is_const, ZoneList<const AstRawString*>* names,
-      ForStatement* loop, Statement* init, Expression* cond, Statement* next,
-      Statement* body, bool* ok);
+      Scope* inner_scope, VariableMode mode,
+      ZoneList<const AstRawString*>* names, ForStatement* loop, Statement* init,
+      Expression* cond, Statement* next, Statement* body, bool* ok);
 
   void RewriteDoExpression(Expression* expr, bool* ok);
 
@@ -966,8 +974,9 @@ class Parser : public ParserBase<ParserTraits> {
   Statement* BuildAssertIsCoercible(Variable* var);
 
   // Factory methods.
-  FunctionLiteral* DefaultConstructor(bool call_super, Scope* scope, int pos,
-                                      int end_pos, LanguageMode language_mode);
+  FunctionLiteral* DefaultConstructor(const AstRawString* name, bool call_super,
+                                      Scope* scope, int pos, int end_pos,
+                                      LanguageMode language_mode);
 
   // Skip over a lazy function, either using cached data if we have it, or
   // by parsing the function with PreParser. Consumes the ending }.
@@ -1013,11 +1022,11 @@ class Parser : public ParserBase<ParserTraits> {
 
   V8_INLINE void RewriteDestructuringAssignments();
 
+  friend class NonPatternRewriter;
+  V8_INLINE Expression* RewriteSpreads(ArrayLiteral* lit);
+
   V8_INLINE Expression* RewriteNonPattern(
       Expression* expr, const ExpressionClassifier* classifier, bool* ok);
-  V8_INLINE ZoneList<Expression*>* RewriteNonPatternArguments(
-      ZoneList<Expression*>* args, const ExpressionClassifier* classifier,
-      bool* ok);
   V8_INLINE ObjectLiteralProperty* RewriteNonPatternObjectLiteralProperty(
       ObjectLiteralProperty* property, const ExpressionClassifier* classifier,
       bool* ok);

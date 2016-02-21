@@ -12,6 +12,7 @@
 #include "src/base/utils/random-number-generator.h"
 
 #include "src/compiler/graph-visualizer.h"
+#include "src/compiler/int64-lowering.h"
 #include "src/compiler/js-graph.h"
 #include "src/compiler/wasm-compiler.h"
 
@@ -50,47 +51,47 @@ using namespace v8::internal::wasm;
 inline void init_env(FunctionEnv* env, FunctionSig* sig) {
   env->module = nullptr;
   env->sig = sig;
-  env->local_int32_count = 0;
-  env->local_int64_count = 0;
-  env->local_float32_count = 0;
-  env->local_float64_count = 0;
+  env->local_i32_count = 0;
+  env->local_i64_count = 0;
+  env->local_f32_count = 0;
+  env->local_f64_count = 0;
   env->SumLocals();
 }
 
 const uint32_t kMaxGlobalsSize = 128;
 
 // A helper for module environments that adds the ability to allocate memory
-// and global variables.
+// and global variables. Contains a built-in {WasmModuleInstance}.
 class TestingModule : public ModuleEnv {
  public:
-  TestingModule() : mem_size(0), global_offset(0) {
-    globals_area = 0;
-    mem_start = 0;
-    mem_end = 0;
+  TestingModule() : instance_(nullptr), global_offset(0) {
+    instance = &instance_;
+    instance->globals_start = global_data;
+    instance->globals_size = kMaxGlobalsSize;
+    instance->mem_start = nullptr;
+    instance->mem_size = 0;
+    instance->function_code = nullptr;
     module = nullptr;
     linker = nullptr;
-    function_code = nullptr;
     asm_js = false;
     memset(global_data, 0, sizeof(global_data));
   }
 
   ~TestingModule() {
-    if (mem_start) {
-      free(raw_mem_start<byte>());
+    if (instance->mem_start) {
+      free(instance->mem_start);
     }
-    if (function_code) delete function_code;
+    if (instance->function_code) delete instance->function_code;
     if (module) delete module;
   }
 
   byte* AddMemory(size_t size) {
-    CHECK_EQ(0, mem_start);
-    CHECK_EQ(0, mem_size);
-    mem_start = reinterpret_cast<uintptr_t>(malloc(size));
-    CHECK(mem_start);
-    byte* raw = raw_mem_start<byte>();
-    memset(raw, 0, size);
-    mem_end = mem_start + size;
-    mem_size = size;
+    CHECK_NULL(instance->mem_start);
+    CHECK_EQ(0, instance->mem_size);
+    instance->mem_start = reinterpret_cast<byte*>(malloc(size));
+    CHECK(instance->mem_start);
+    memset(instance->mem_start, 0, size);
+    instance->mem_size = size;
     return raw_mem_start<byte>();
   }
 
@@ -103,7 +104,7 @@ class TestingModule : public ModuleEnv {
   template <typename T>
   T* AddGlobal(MachineType mem_type) {
     WasmGlobal* global = AddGlobal(mem_type);
-    return reinterpret_cast<T*>(globals_area + global->offset);
+    return reinterpret_cast<T*>(instance->globals_start + global->offset);
   }
 
   byte AddSignature(FunctionSig* sig) {
@@ -119,33 +120,33 @@ class TestingModule : public ModuleEnv {
 
   template <typename T>
   T* raw_mem_start() {
-    DCHECK(mem_start);
-    return reinterpret_cast<T*>(mem_start);
+    DCHECK(instance->mem_start);
+    return reinterpret_cast<T*>(instance->mem_start);
   }
 
   template <typename T>
   T* raw_mem_end() {
-    DCHECK(mem_end);
-    return reinterpret_cast<T*>(mem_end);
+    DCHECK(instance->mem_start);
+    return reinterpret_cast<T*>(instance->mem_start + instance->mem_size);
   }
 
   template <typename T>
   T raw_mem_at(int i) {
-    DCHECK(mem_start);
-    return reinterpret_cast<T*>(mem_start)[i];
+    DCHECK(instance->mem_start);
+    return reinterpret_cast<T*>(instance->mem_start)[i];
   }
 
   template <typename T>
   T raw_val_at(int i) {
     T val;
-    memcpy(&val, reinterpret_cast<void*>(mem_start + i), sizeof(T));
+    memcpy(&val, reinterpret_cast<void*>(instance->mem_start + i), sizeof(T));
     return val;
   }
 
   // Zero-initialize the memory.
   void BlankMemory() {
     byte* raw = raw_mem_start<byte>();
-    memset(raw, 0, mem_size);
+    memset(raw, 0, instance->mem_size);
   }
 
   // Pseudo-randomly intialize the memory.
@@ -161,22 +162,48 @@ class TestingModule : public ModuleEnv {
     AllocModule();
     if (module->functions == nullptr) {
       module->functions = new std::vector<WasmFunction>();
-      function_code = new std::vector<Handle<Code>>();
+      instance->function_code = new std::vector<Handle<Code>>();
     }
-    module->functions->push_back({sig, 0, 0, 0, 0, 0, 0, 0, false, false});
-    function_code->push_back(code);
+    uint32_t index = static_cast<uint32_t>(module->functions->size());
+    module->functions->push_back(
+        {sig, index, 0, 0, 0, 0, 0, 0, 0, false, false});
+    instance->function_code->push_back(code);
     return &module->functions->back();
   }
 
+  void AddIndirectFunctionTable(int* functions, int table_size) {
+    AllocModule();
+    Isolate* isolate = module->shared_isolate;
+    Handle<FixedArray> fixed =
+        isolate->factory()->NewFixedArray(2 * table_size);
+    instance->function_table = fixed;
+    module->function_table = new std::vector<uint16_t>();
+    for (int i = 0; i < table_size; i++) {
+      module->function_table->push_back(functions[i]);
+    }
+  }
+
+  void PopulateIndirectFunctionTable() {
+    if (instance->function_table.is_null()) return;
+    int table_size = static_cast<int>(module->function_table->size());
+    for (int i = 0; i < table_size; i++) {
+      int function_index = module->function_table->at(i);
+      WasmFunction* function = &module->functions->at(function_index);
+      instance->function_table->set(i, Smi::FromInt(function->sig_index));
+      instance->function_table->set(
+          i + table_size, *instance->function_code->at(function_index));
+    }
+  }
+
+
  private:
-  size_t mem_size;
+  WasmModuleInstance instance_;
   uint32_t global_offset;
-  byte global_data[kMaxGlobalsSize];
+  V8_ALIGNED(8) byte global_data[kMaxGlobalsSize];  // preallocated global data.
 
   WasmGlobal* AddGlobal(MachineType mem_type) {
     AllocModule();
-    if (globals_area == 0) {
-      globals_area = reinterpret_cast<uintptr_t>(global_data);
+    if (!module->globals) {
       module->globals = new std::vector<WasmGlobal>();
     }
     byte size = WasmOpcodes::MemSize(mem_type);
@@ -212,6 +239,7 @@ inline void TestBuildingGraph(Zone* zone, JSGraph* jsgraph, FunctionEnv* env,
     str << ", msg = " << result.error_msg.get();
     FATAL(str.str().c_str());
   }
+  builder.Int64LoweringForTesting();
   if (FLAG_trace_turbo_graph) {
     OFStream os(stdout);
     os << AsRPO(*jsgraph->graph());
@@ -271,12 +299,13 @@ class WasmFunctionCompiler : public HandleAndZoneScope,
     return result;
   }
 
-  uint32_t CompileAndAdd(TestingModule* module) {
+  uint32_t CompileAndAdd(TestingModule* module, int sig_index = 0) {
     uint32_t index = 0;
     if (module->module && module->module->functions) {
       index = static_cast<uint32_t>(module->module->functions->size());
     }
-    module->AddFunction(env.sig, Compile(module));
+    WasmFunction* function = module->AddFunction(env.sig, Compile(module));
+    function->sig_index = sig_index;
     return index;
   }
 };

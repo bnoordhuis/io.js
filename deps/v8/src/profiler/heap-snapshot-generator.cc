@@ -11,7 +11,6 @@
 #include "src/profiler/allocation-tracker.h"
 #include "src/profiler/heap-profiler.h"
 #include "src/profiler/heap-snapshot-generator-inl.h"
-#include "src/types.h"
 
 namespace v8 {
 namespace internal {
@@ -1109,10 +1108,6 @@ void V8HeapExplorer::ExtractJSObjectReferences(
     TagObject(js_fun->bound_arguments(), "(bound arguments)");
     SetInternalReference(js_fun, entry, "bindings", js_fun->bound_arguments(),
                          JSBoundFunction::kBoundArgumentsOffset);
-    TagObject(js_fun->creation_context(), "(creation context)");
-    SetInternalReference(js_fun, entry, "creation_context",
-                         js_fun->creation_context(),
-                         JSBoundFunction::kCreationContextOffset);
     SetNativeBindReference(js_obj, entry, "bound_this", js_fun->bound_this());
     SetNativeBindReference(js_obj, entry, "bound_function",
                            js_fun->bound_target_function());
@@ -1425,18 +1420,17 @@ void V8HeapExplorer::ExtractAccessorInfoReferences(
   SetInternalReference(accessor_info, entry, "expected_receiver_type",
                        accessor_info->expected_receiver_type(),
                        AccessorInfo::kExpectedReceiverTypeOffset);
-  if (accessor_info->IsExecutableAccessorInfo()) {
-    ExecutableAccessorInfo* executable_accessor_info =
-        ExecutableAccessorInfo::cast(accessor_info);
+  if (accessor_info->IsAccessorInfo()) {
+    AccessorInfo* executable_accessor_info = AccessorInfo::cast(accessor_info);
     SetInternalReference(executable_accessor_info, entry, "getter",
                          executable_accessor_info->getter(),
-                         ExecutableAccessorInfo::kGetterOffset);
+                         AccessorInfo::kGetterOffset);
     SetInternalReference(executable_accessor_info, entry, "setter",
                          executable_accessor_info->setter(),
-                         ExecutableAccessorInfo::kSetterOffset);
+                         AccessorInfo::kSetterOffset);
     SetInternalReference(executable_accessor_info, entry, "data",
                          executable_accessor_info->data(),
-                         ExecutableAccessorInfo::kDataOffset);
+                         AccessorInfo::kDataOffset);
   }
 }
 
@@ -1873,7 +1867,6 @@ bool V8HeapExplorer::IterateAndExtractSinglePass() {
 bool V8HeapExplorer::IsEssentialObject(Object* object) {
   return object->IsHeapObject() && !object->IsOddball() &&
          object != heap_->empty_byte_array() &&
-         object != heap_->empty_bytecode_array() &&
          object != heap_->empty_fixed_array() &&
          object != heap_->empty_descriptor_array() &&
          object != heap_->fixed_array_map() && object != heap_->cell_map() &&

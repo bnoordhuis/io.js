@@ -820,6 +820,10 @@ class Isolate {
   StubCache* stub_cache() { return stub_cache_; }
   CodeAgingHelper* code_aging_helper() { return code_aging_helper_; }
   DeoptimizerData* deoptimizer_data() { return deoptimizer_data_; }
+  bool deoptimizer_lazy_throw() const { return deoptimizer_lazy_throw_; }
+  void set_deoptimizer_lazy_throw(bool value) {
+    deoptimizer_lazy_throw_ = value;
+  }
   ThreadLocalTop* thread_local_top() { return &thread_local_top_; }
   MaterializedObjectStore* materialized_object_store() {
     return materialized_object_store_;
@@ -891,7 +895,7 @@ class Isolate {
 
   unibrow::Mapping<unibrow::Ecma262Canonicalize>*
       interp_canonicalize_mapping() {
-    return &interp_canonicalize_mapping_;
+    return &regexp_macro_assembler_canonicalize_;
   }
 
   Debug* debug() { return debug_; }
@@ -1218,6 +1222,7 @@ class Isolate {
   StubCache* stub_cache_;
   CodeAgingHelper* code_aging_helper_;
   DeoptimizerData* deoptimizer_data_;
+  bool deoptimizer_lazy_throw_;
   MaterializedObjectStore* materialized_object_store_;
   ThreadLocalTop thread_local_top_;
   bool capture_stack_trace_for_uncaught_exceptions_;
@@ -1245,7 +1250,6 @@ class Isolate {
       regexp_macro_assembler_canonicalize_;
   RegExpStack* regexp_stack_;
   DateCache* date_cache_;
-  unibrow::Mapping<unibrow::Ecma262Canonicalize> interp_canonicalize_mapping_;
   CallInterfaceDescriptorData* call_descriptor_data_;
   base::RandomNumberGenerator* random_number_generator_;
 

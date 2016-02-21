@@ -654,11 +654,6 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       frame_access_state()->ClearSPDelta();
       break;
     }
-    case kArchLazyBailout: {
-      EnsureSpaceForLazyDeopt();
-      RecordCallPosition(instr);
-      break;
-    }
     case kArchPrepareCallCFunction: {
       // Frame alignment requires using FP-relative frame addressing.
       frame_access_state()->SetFrameAccessToFP();
@@ -712,6 +707,13 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kArchFramePointer:
       __ movq(i.OutputRegister(), rbp);
       break;
+    case kArchParentFramePointer:
+      if (frame_access_state()->frame()->needs_frame()) {
+        __ movq(i.OutputRegister(), Operand(rbp, 0));
+      } else {
+        __ movq(i.OutputRegister(), rbp);
+      }
+      break;
     case kArchTruncateDoubleToI: {
       auto result = i.OutputRegister();
       auto input = i.InputDoubleRegister(0);
@@ -738,6 +740,18 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
                        MemoryChunk::kPointersFromHereAreInterestingMask,
                        not_zero, ool->entry());
       __ bind(ool->exit());
+      break;
+    }
+    case kArchStackSlot: {
+      FrameOffset offset =
+          frame_access_state()->GetFrameOffset(i.InputInt32(0));
+      Register base;
+      if (offset.from_stack_pointer()) {
+        base = rsp;
+      } else {
+        base = rbp;
+      }
+      __ leaq(i.OutputRegister(), Operand(base, offset.offset()));
       break;
     }
     case kX64Add32:
@@ -945,6 +959,22 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       RoundingMode const mode =
           static_cast<RoundingMode>(MiscField::decode(instr->opcode()));
       __ Roundss(i.OutputDoubleRegister(), i.InputDoubleRegister(0), mode);
+      break;
+    }
+    case kSSEFloat32ToInt32:
+      if (instr->InputAt(0)->IsDoubleRegister()) {
+        __ Cvttss2si(i.OutputRegister(), i.InputDoubleRegister(0));
+      } else {
+        __ Cvttss2si(i.OutputRegister(), i.InputOperand(0));
+      }
+      break;
+    case kSSEFloat32ToUint32: {
+      if (instr->InputAt(0)->IsDoubleRegister()) {
+        __ Cvttss2siq(i.OutputRegister(), i.InputDoubleRegister(0));
+      } else {
+        __ Cvttss2siq(i.OutputRegister(), i.InputOperand(0));
+      }
+      __ AssertZeroExtended(i.OutputRegister());
       break;
     }
     case kSSEFloat64Cmp:
@@ -1197,6 +1227,13 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
         __ Cvtlsi2sd(i.OutputDoubleRegister(), i.InputOperand(0));
       }
       break;
+    case kSSEInt32ToFloat32:
+      if (instr->InputAt(0)->IsRegister()) {
+        __ Cvtlsi2ss(i.OutputDoubleRegister(), i.InputRegister(0));
+      } else {
+        __ Cvtlsi2ss(i.OutputDoubleRegister(), i.InputOperand(0));
+      }
+      break;
     case kSSEInt64ToFloat32:
       if (instr->InputAt(0)->IsRegister()) {
         __ Cvtqsi2ss(i.OutputDoubleRegister(), i.InputRegister(0));
@@ -1236,6 +1273,14 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
         __ movl(kScratchRegister, i.InputOperand(0));
       }
       __ Cvtqsi2sd(i.OutputDoubleRegister(), kScratchRegister);
+      break;
+    case kSSEUint32ToFloat32:
+      if (instr->InputAt(0)->IsRegister()) {
+        __ movl(kScratchRegister, i.InputRegister(0));
+      } else {
+        __ movl(kScratchRegister, i.InputOperand(0));
+      }
+      __ Cvtqsi2ss(i.OutputDoubleRegister(), kScratchRegister);
       break;
     case kSSEFloat64ExtractLowWord32:
       if (instr->InputAt(0)->IsDoubleStackSlot()) {
@@ -1828,8 +1873,6 @@ void CodeGenerator::AssemblePrologue() {
     // remaining stack slots.
     if (FLAG_code_comments) __ RecordComment("-- OSR entrypoint --");
     osr_pc_offset_ = __ pc_offset();
-    // TODO(titzer): cannot address target function == local #-1
-    __ movq(rdi, Operand(rbp, JavaScriptFrameConstants::kFunctionOffset));
     stack_shrink_slots -=
         static_cast<int>(OsrHelper(info()).UnoptimizedFrameSlots());
   }

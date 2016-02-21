@@ -529,7 +529,7 @@ enum VisitMode {
 };
 
 // Flag indicating whether code is built into the VM (one of the natives files).
-enum NativesFlag { NOT_NATIVES_CODE, NATIVES_CODE };
+enum NativesFlag { NOT_NATIVES_CODE, EXTENSION_CODE, NATIVES_CODE };
 
 // JavaScript defines two kinds of 'nil'.
 enum NilValue { kNullValue, kUndefinedValue };
@@ -754,6 +754,45 @@ inline std::ostream& operator<<(std::ostream& os, ConvertReceiverMode mode) {
   return os;
 }
 
+// Defines whether tail call optimization is allowed.
+enum class TailCallMode : unsigned { kAllow, kDisallow };
+
+inline size_t hash_value(TailCallMode mode) { return bit_cast<unsigned>(mode); }
+
+inline std::ostream& operator<<(std::ostream& os, TailCallMode mode) {
+  switch (mode) {
+    case TailCallMode::kAllow:
+      return os << "ALLOW_TAIL_CALLS";
+    case TailCallMode::kDisallow:
+      return os << "DISALLOW_TAIL_CALLS";
+  }
+  UNREACHABLE();
+  return os;
+}
+
+// Defines specifics about arguments object or rest parameter creation.
+enum class CreateArgumentsType : uint8_t {
+  kMappedArguments,
+  kUnmappedArguments,
+  kRestParameter
+};
+
+inline size_t hash_value(CreateArgumentsType type) {
+  return bit_cast<uint8_t>(type);
+}
+
+inline std::ostream& operator<<(std::ostream& os, CreateArgumentsType type) {
+  switch (type) {
+    case CreateArgumentsType::kMappedArguments:
+      return os << "MAPPED_ARGUMENTS";
+    case CreateArgumentsType::kUnmappedArguments:
+      return os << "UNMAPPED_ARGUMENTS";
+    case CreateArgumentsType::kRestParameter:
+      return os << "REST_PARAMETER";
+  }
+  UNREACHABLE();
+  return os;
+}
 
 // Used to specify if a macro instruction must perform a smi check on tagged
 // values.
@@ -1024,8 +1063,9 @@ inline bool IsClassConstructor(FunctionKind kind) {
 
 inline bool IsConstructable(FunctionKind kind, LanguageMode mode) {
   if (IsAccessorFunction(kind)) return false;
-  if (IsConciseMethod(kind) && !IsGeneratorFunction(kind)) return false;
+  if (IsConciseMethod(kind)) return false;
   if (IsArrowFunction(kind)) return false;
+  if (IsGeneratorFunction(kind)) return false;
   if (is_strong(mode)) return IsClassConstructor(kind);
   return true;
 }
@@ -1042,6 +1082,14 @@ inline FunctionKind WithObjectLiteralBit(FunctionKind kind) {
   DCHECK(IsValidFunctionKind(kind));
   return kind;
 }
+
+inline uint32_t ObjectHash(Address address) {
+  // All objects are at least pointer aligned, so we can remove the trailing
+  // zeros.
+  return static_cast<uint32_t>(bit_cast<uintptr_t>(address) >>
+                               kPointerSizeLog2);
+}
+
 }  // namespace internal
 }  // namespace v8
 

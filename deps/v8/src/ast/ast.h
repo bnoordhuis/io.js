@@ -196,6 +196,13 @@ class AstNode: public ZoneObject {
   virtual NodeType node_type() const = 0;
   int position() const { return position_; }
 
+#ifdef DEBUG
+  void PrettyPrint(Isolate* isolate);
+  void PrettyPrint();
+  void PrintAst(Isolate* isolate);
+  void PrintAst();
+#endif  // DEBUG
+
   // Type testing & conversion functions overridden by concrete subclasses.
 #define DECLARE_NODE_FUNCTIONS(type) \
   bool Is##type() const { return node_type() == AstNode::k##type; } \
@@ -237,7 +244,6 @@ class Statement : public AstNode {
 
   bool IsEmpty() { return AsEmptyStatement() != NULL; }
   virtual bool IsJump() const { return false; }
-  virtual void MarkTail() {}
 };
 
 
@@ -317,6 +323,10 @@ class Expression : public AstNode {
   // names because [] for string objects is handled only by keyed ICs.
   virtual bool IsPropertyName() const { return false; }
 
+  // True iff the expression is a class or function expression without
+  // a syntactic name.
+  virtual bool IsAnonymousFunctionDefinition() const { return false; }
+
   // True iff the expression is a literal represented as a smi.
   bool IsSmiLiteral() const;
 
@@ -365,14 +375,6 @@ class Expression : public AstNode {
   BailoutId id() const { return BailoutId(local_id(0)); }
   TypeFeedbackId test_id() const { return TypeFeedbackId(local_id(1)); }
 
-  // Parenthesized expressions in the form `( Expression )`.
-  void set_is_parenthesized() {
-    bit_field_ = ParenthesizedField::update(bit_field_, true);
-  }
-  bool is_parenthesized() const {
-    return ParenthesizedField::decode(bit_field_);
-  }
-
  protected:
   Expression(Zone* zone, int pos)
       : AstNode(pos),
@@ -395,8 +397,6 @@ class Expression : public AstNode {
   int base_id_;
   Bounds bounds_;
   class ToBooleanTypesField : public BitField16<uint16_t, 0, 9> {};
-  class ParenthesizedField
-      : public BitField16<bool, ToBooleanTypesField::kNext, 1> {};
   uint16_t bit_field_;
   // Ends with 16-bit field; deriving classes in turn begin with
   // 16-bit fields for optimum packing efficiency.
@@ -471,10 +471,6 @@ class Block final : public BreakableStatement {
         && labels() == NULL;  // Good enough as an approximation...
   }
 
-  void MarkTail() override {
-    if (!statements_.is_empty()) statements_.last()->MarkTail();
-  }
-
   Scope* scope() const { return scope_; }
   void set_scope(Scope* scope) { scope_ = scope; }
 
@@ -504,8 +500,6 @@ class DoExpression final : public Expression {
   void set_block(Block* b) { block_ = b; }
   VariableProxy* result() { return result_; }
   void set_result(VariableProxy* v) { result_ = v; }
-
-  void MarkTail() override { block_->MarkTail(); }
 
  protected:
   DoExpression(Zone* zone, Block* block, VariableProxy* result, int pos)
@@ -820,6 +814,10 @@ class ForEachStatement : public IterationStatement {
                                  FeedbackVectorSlotCache* cache) override;
   FeedbackVectorSlot EachFeedbackSlot() const { return each_slot_; }
 
+  static const char* VisitModeString(VisitMode mode) {
+    return mode == ITERATE ? "for-of" : "for-in";
+  }
+
  protected:
   ForEachStatement(Zone* zone, ZoneList<const AstRawString*>* labels, int pos)
       : IterationStatement(zone, labels, pos), each_(NULL), subject_(NULL) {}
@@ -857,9 +855,9 @@ class ForInStatement final : public ForEachStatement {
 
   static int num_ids() { return parent_num_ids() + 6; }
   BailoutId BodyId() const { return BailoutId(local_id(0)); }
-  BailoutId PrepareId() const { return BailoutId(local_id(1)); }
-  BailoutId EnumId() const { return BailoutId(local_id(2)); }
-  BailoutId ToObjectId() const { return BailoutId(local_id(3)); }
+  BailoutId EnumId() const { return BailoutId(local_id(1)); }
+  BailoutId ToObjectId() const { return BailoutId(local_id(2)); }
+  BailoutId PrepareId() const { return BailoutId(local_id(3)); }
   BailoutId FilterId() const { return BailoutId(local_id(4)); }
   BailoutId AssignmentId() const { return BailoutId(local_id(5)); }
   BailoutId ContinueId() const override { return EntryId(); }
@@ -957,7 +955,6 @@ class ExpressionStatement final : public Statement {
   void set_expression(Expression* e) { expression_ = e; }
   Expression* expression() const { return expression_; }
   bool IsJump() const override { return expression_->IsThrow(); }
-  void MarkTail() override { expression_->MarkTail(); }
 
  protected:
   ExpressionStatement(Zone* zone, Expression* expression, int pos)
@@ -1039,8 +1036,6 @@ class WithStatement final : public Statement {
   BailoutId ToObjectId() const { return BailoutId(local_id(0)); }
   BailoutId EntryId() const { return BailoutId(local_id(1)); }
 
-  void MarkTail() override { statement_->MarkTail(); }
-
  protected:
   WithStatement(Zone* zone, Scope* scope, Expression* expression,
                 Statement* statement, int pos)
@@ -1083,10 +1078,6 @@ class CaseClause final : public Expression {
   BailoutId EntryId() const { return BailoutId(local_id(0)); }
   TypeFeedbackId CompareId() { return TypeFeedbackId(local_id(1)); }
 
-  void MarkTail() override {
-    if (!statements_->is_empty()) statements_->last()->MarkTail();
-  }
-
   Type* compare_type() { return compare_type_; }
   void set_compare_type(Type* type) { compare_type_ = type; }
 
@@ -1118,10 +1109,6 @@ class SwitchStatement final : public BreakableStatement {
   ZoneList<CaseClause*>* cases() const { return cases_; }
 
   void set_tag(Expression* t) { tag_ = t; }
-
-  void MarkTail() override {
-    if (!cases_->is_empty()) cases_->last()->MarkTail();
-  }
 
  protected:
   SwitchStatement(Zone* zone, ZoneList<const AstRawString*>* labels, int pos)
@@ -1160,11 +1147,6 @@ class IfStatement final : public Statement {
         && HasElseStatement() && else_statement()->IsJump();
   }
 
-  void MarkTail() override {
-    then_statement_->MarkTail();
-    else_statement_->MarkTail();
-  }
-
   void set_base_id(int id) { base_id_ = id; }
   static int num_ids() { return parent_num_ids() + 3; }
   BailoutId IfId() const { return BailoutId(local_id(0)); }
@@ -1201,27 +1183,12 @@ class TryStatement : public Statement {
   Block* try_block() const { return try_block_; }
   void set_try_block(Block* b) { try_block_ = b; }
 
-  void set_base_id(int id) { base_id_ = id; }
-  static int num_ids() { return parent_num_ids() + 1; }
-  BailoutId HandlerId() const { return BailoutId(local_id(0)); }
-
  protected:
   TryStatement(Zone* zone, Block* try_block, int pos)
-      : Statement(zone, pos),
-        try_block_(try_block),
-        base_id_(BailoutId::None().ToInt()) {}
-  static int parent_num_ids() { return 0; }
-
-  int base_id() const {
-    DCHECK(!BailoutId(base_id_).IsNone());
-    return base_id_;
-  }
+      : Statement(zone, pos), try_block_(try_block) {}
 
  private:
-  int local_id(int n) const { return base_id() + parent_num_ids() + n; }
-
   Block* try_block_;
-  int base_id_;
 };
 
 
@@ -1233,8 +1200,6 @@ class TryCatchStatement final : public TryStatement {
   Variable* variable() { return variable_; }
   Block* catch_block() const { return catch_block_; }
   void set_catch_block(Block* b) { catch_block_ = b; }
-
-  void MarkTail() override { catch_block_->MarkTail(); }
 
  protected:
   TryCatchStatement(Zone* zone, Block* try_block, Scope* scope,
@@ -1257,8 +1222,6 @@ class TryFinallyStatement final : public TryStatement {
 
   Block* finally_block() const { return finally_block_; }
   void set_finally_block(Block* b) { finally_block_ = b; }
-
-  void MarkTail() override { finally_block_->MarkTail(); }
 
  protected:
   TryFinallyStatement(Zone* zone, Block* try_block, Block* finally_block,
@@ -1472,6 +1435,10 @@ class ObjectLiteralProperty final : public ZoneObject {
 
   void set_receiver_type(Handle<Map> map) { receiver_type_ = map; }
 
+  bool NeedsSetFunctionName() const {
+    return is_computed_name_ && value_->IsAnonymousFunctionDefinition();
+  }
+
  protected:
   friend class AstNodeFactory;
 
@@ -1510,6 +1477,9 @@ class ObjectLiteral final : public MaterializedLiteral {
   bool may_store_doubles() const { return may_store_doubles_; }
   bool has_function() const { return has_function_; }
   bool has_elements() const { return has_elements_; }
+  bool has_shallow_properties() const {
+    return depth() == 1 && !has_elements() && !may_store_doubles();
+  }
 
   // Decide if a property should be in the object boilerplate.
   static bool IsBoilerplateProperty(Property* property);
@@ -1526,7 +1496,7 @@ class ObjectLiteral final : public MaterializedLiteral {
   int ComputeFlags(bool disable_mementos = false) const {
     int flags = fast_elements() ? kFastElements : kNoFlags;
     flags |= has_function() ? kHasFunction : kNoFlags;
-    if (depth() == 1 && !has_elements() && !may_store_doubles()) {
+    if (has_shallow_properties()) {
       flags |= kShallowProperties;
     }
     if (disable_mementos) {
@@ -1681,6 +1651,19 @@ class ArrayLiteral final : public MaterializedLiteral {
       flags |= kIsStrong;
     }
     return flags;
+  }
+
+  // Provide a mechanism for iterating through values to rewrite spreads.
+  ZoneList<Expression*>::iterator FirstSpread() const {
+    return (first_spread_index_ >= 0) ? values_->begin() + first_spread_index_
+                                      : values_->end();
+  }
+  ZoneList<Expression*>::iterator EndValue() const { return values_->end(); }
+
+  // Rewind an array literal omitting everything from the first spread on.
+  void RewindSpreads() {
+    values_->Rewind(first_spread_index_);
+    first_spread_index_ = -1;
   }
 
   enum Flags {
@@ -1975,7 +1958,10 @@ class Call final : public Expression {
     bit_field_ = IsUninitializedField::update(bit_field_, b);
   }
 
-  bool is_tail() const { return IsTailField::decode(bit_field_); }
+  TailCallMode tail_call_mode() const {
+    return IsTailField::decode(bit_field_) ? TailCallMode::kAllow
+                                           : TailCallMode::kDisallow;
+  }
   void MarkTail() override {
     bit_field_ = IsTailField::update(bit_field_, true);
   }
@@ -2349,7 +2335,7 @@ class CompareOperation final : public Expression {
         op_(op),
         left_(left),
         right_(right),
-        combined_type_(Type::None(zone)) {
+        combined_type_(Type::None()) {
     DCHECK(Token::IsCompareOp(op));
   }
   static int parent_num_ids() { return Expression::num_ids(); }
@@ -2372,17 +2358,20 @@ class Spread final : public Expression {
   Expression* expression() const { return expression_; }
   void set_expression(Expression* e) { expression_ = e; }
 
+  int expression_position() const { return expr_pos_; }
+
   static int num_ids() { return parent_num_ids(); }
 
  protected:
-  Spread(Zone* zone, Expression* expression, int pos)
-      : Expression(zone, pos), expression_(expression) {}
+  Spread(Zone* zone, Expression* expression, int pos, int expr_pos)
+      : Expression(zone, pos), expression_(expression), expr_pos_(expr_pos) {}
   static int parent_num_ids() { return Expression::num_ids(); }
 
  private:
   int local_id(int n) const { return base_id() + parent_num_ids() + n; }
 
   Expression* expression_;
+  int expr_pos_;
 };
 
 
@@ -2555,26 +2544,6 @@ class Yield final : public Expression {
   void set_generator_object(Expression* e) { generator_object_ = e; }
   void set_expression(Expression* e) { expression_ = e; }
 
-  // Type feedback information.
-  bool HasFeedbackSlots() const { return yield_kind() == kDelegating; }
-  void AssignFeedbackVectorSlots(Isolate* isolate, FeedbackVectorSpec* spec,
-                                 FeedbackVectorSlotCache* cache) override {
-    if (HasFeedbackSlots()) {
-      yield_first_feedback_slot_ = spec->AddKeyedLoadICSlot();
-      keyed_load_feedback_slot_ = spec->AddLoadICSlot();
-      done_feedback_slot_ = spec->AddLoadICSlot();
-    }
-  }
-
-  FeedbackVectorSlot KeyedLoadFeedbackSlot() {
-    DCHECK(!HasFeedbackSlots() || !yield_first_feedback_slot_.IsInvalid());
-    return yield_first_feedback_slot_;
-  }
-
-  FeedbackVectorSlot DoneFeedbackSlot() { return keyed_load_feedback_slot_; }
-
-  FeedbackVectorSlot ValueFeedbackSlot() { return done_feedback_slot_; }
-
  protected:
   Yield(Zone* zone, Expression* generator_object, Expression* expression,
         Kind yield_kind, int pos)
@@ -2587,9 +2556,6 @@ class Yield final : public Expression {
   Expression* generator_object_;
   Expression* expression_;
   Kind yield_kind_;
-  FeedbackVectorSlot yield_first_feedback_slot_;
-  FeedbackVectorSlot keyed_load_feedback_slot_;
-  FeedbackVectorSlot done_feedback_slot_;
 };
 
 
@@ -2729,6 +2695,13 @@ class FunctionLiteral final : public Expression {
     dont_optimize_reason_ = reason;
   }
 
+  bool IsAnonymousFunctionDefinition() const final {
+    // TODO(adamk): This isn't quite accurate, as many non-expressions
+    // (such as concise methods) are marked as anonymous, but it's
+    // sufficient for the current callers.
+    return is_anonymous();
+  }
+
  protected:
   FunctionLiteral(Zone* zone, const AstString* name,
                   AstValueFactory* ast_value_factory, Scope* scope,
@@ -2796,13 +2769,6 @@ class ClassLiteral final : public Expression {
 
   DECLARE_NODE_TYPE(ClassLiteral)
 
-  Handle<String> name() const { return raw_name_->string(); }
-  const AstRawString* raw_name() const { return raw_name_; }
-  void set_raw_name(const AstRawString* name) {
-    DCHECK_NULL(raw_name_);
-    raw_name_ = name;
-  }
-
   Scope* scope() const { return scope_; }
   VariableProxy* class_variable_proxy() const { return class_variable_proxy_; }
   Expression* extends() const { return extends_; }
@@ -2817,13 +2783,14 @@ class ClassLiteral final : public Expression {
   BailoutId DeclsId() const { return BailoutId(local_id(1)); }
   BailoutId ExitId() { return BailoutId(local_id(2)); }
   BailoutId CreateLiteralId() const { return BailoutId(local_id(3)); }
+  BailoutId PrototypeId() { return BailoutId(local_id(4)); }
 
   // Return an AST id for a property that is used in simulate instructions.
-  BailoutId GetIdForProperty(int i) { return BailoutId(local_id(i + 4)); }
+  BailoutId GetIdForProperty(int i) { return BailoutId(local_id(i + 5)); }
 
   // Unlike other AST nodes, this number of bailout IDs allocated for an
   // ClassLiteral can vary, so num_ids() is not a static method.
-  int num_ids() const { return parent_num_ids() + 4 + properties()->length(); }
+  int num_ids() const { return parent_num_ids() + 5 + properties()->length(); }
 
   // Object literals need one feedback slot for each non-trivial value, as well
   // as some slots for home objects.
@@ -2835,15 +2802,19 @@ class ClassLiteral final : public Expression {
            class_variable_proxy()->var()->IsUnallocated();
   }
 
-  FeedbackVectorSlot ProxySlot() const { return slot_; }
+  FeedbackVectorSlot PrototypeSlot() const { return prototype_slot_; }
+  FeedbackVectorSlot ProxySlot() const { return proxy_slot_; }
+
+  bool IsAnonymousFunctionDefinition() const final {
+    return constructor()->raw_name()->length() == 0;
+  }
 
  protected:
-  ClassLiteral(Zone* zone, const AstRawString* name, Scope* scope,
-               VariableProxy* class_variable_proxy, Expression* extends,
-               FunctionLiteral* constructor, ZoneList<Property*>* properties,
-               int start_position, int end_position)
+  ClassLiteral(Zone* zone, Scope* scope, VariableProxy* class_variable_proxy,
+               Expression* extends, FunctionLiteral* constructor,
+               ZoneList<Property*>* properties, int start_position,
+               int end_position)
       : Expression(zone, start_position),
-        raw_name_(name),
         scope_(scope),
         class_variable_proxy_(class_variable_proxy),
         extends_(extends),
@@ -2856,14 +2827,14 @@ class ClassLiteral final : public Expression {
  private:
   int local_id(int n) const { return base_id() + parent_num_ids() + n; }
 
-  const AstRawString* raw_name_;
   Scope* scope_;
   VariableProxy* class_variable_proxy_;
   Expression* extends_;
   FunctionLiteral* constructor_;
   ZoneList<Property*>* properties_;
   int end_position_;
-  FeedbackVectorSlot slot_;
+  FeedbackVectorSlot prototype_slot_;
+  FeedbackVectorSlot proxy_slot_;
 };
 
 
@@ -3389,8 +3360,8 @@ class AstNodeFactory final BASE_EMBEDDED {
         CompareOperation(local_zone_, op, left, right, pos);
   }
 
-  Spread* NewSpread(Expression* expression, int pos) {
-    return new (local_zone_) Spread(local_zone_, expression, pos);
+  Spread* NewSpread(Expression* expression, int pos, int expr_pos) {
+    return new (local_zone_) Spread(local_zone_, expression, pos, expr_pos);
   }
 
   Conditional* NewConditional(Expression* condition,
@@ -3452,13 +3423,13 @@ class AstNodeFactory final BASE_EMBEDDED {
         position);
   }
 
-  ClassLiteral* NewClassLiteral(const AstRawString* name, Scope* scope,
-                                VariableProxy* proxy, Expression* extends,
+  ClassLiteral* NewClassLiteral(Scope* scope, VariableProxy* proxy,
+                                Expression* extends,
                                 FunctionLiteral* constructor,
                                 ZoneList<ObjectLiteral::Property*>* properties,
                                 int start_position, int end_position) {
     return new (parser_zone_)
-        ClassLiteral(parser_zone_, name, scope, proxy, extends, constructor,
+        ClassLiteral(parser_zone_, scope, proxy, extends, constructor,
                      properties, start_position, end_position);
   }
 

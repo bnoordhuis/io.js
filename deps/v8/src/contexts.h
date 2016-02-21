@@ -96,11 +96,6 @@ enum BindingFlags {
   V(SPREAD_ITERABLE_INDEX, JSFunction, spread_iterable)
 
 
-#define NATIVE_CONTEXT_JS_BUILTINS(V)                   \
-  V(CONCAT_ITERABLE_TO_ARRAY_BUILTIN_INDEX, JSFunction, \
-    concat_iterable_to_array_builtin)
-
-
 #define NATIVE_CONTEXT_IMPORTED_FIELDS(V)                                     \
   V(ARRAY_CONCAT_INDEX, JSFunction, array_concat)                             \
   V(ARRAY_POP_INDEX, JSFunction, array_pop)                                   \
@@ -154,13 +149,14 @@ enum BindingFlags {
   V(STACK_OVERFLOW_BOILERPLATE_INDEX, JSObject, stack_overflow_boilerplate)   \
   V(SYNTAX_ERROR_FUNCTION_INDEX, JSFunction, syntax_error_function)           \
   V(TYPE_ERROR_FUNCTION_INDEX, JSFunction, type_error_function)               \
-  V(URI_ERROR_FUNCTION_INDEX, JSFunction, uri_error_function)                 \
-  NATIVE_CONTEXT_JS_BUILTINS(V)
+  V(URI_ERROR_FUNCTION_INDEX, JSFunction, uri_error_function)
 
 #define NATIVE_CONTEXT_FIELDS(V)                                               \
   V(GLOBAL_PROXY_INDEX, JSObject, global_proxy_object)                         \
   V(EMBEDDER_DATA_INDEX, FixedArray, embedder_data)                            \
   /* Below is alpha-sorted */                                                  \
+  V(ACCESSOR_PROPERTY_DESCRIPTOR_MAP_INDEX, Map,                               \
+    accessor_property_descriptor_map)                                          \
   V(ALLOW_CODE_GEN_FROM_STRINGS_INDEX, Object, allow_code_gen_from_strings)    \
   V(ARRAY_BUFFER_FUN_INDEX, JSFunction, array_buffer_fun)                      \
   V(ARRAY_BUFFER_MAP_INDEX, Map, array_buffer_map)                             \
@@ -177,6 +173,7 @@ enum BindingFlags {
     call_as_constructor_delegate)                                              \
   V(CALL_AS_FUNCTION_DELEGATE_INDEX, JSFunction, call_as_function_delegate)    \
   V(CONTEXT_EXTENSION_FUNCTION_INDEX, JSFunction, context_extension_function)  \
+  V(DATA_PROPERTY_DESCRIPTOR_MAP_INDEX, Map, data_property_descriptor_map)     \
   V(DATA_VIEW_FUN_INDEX, JSFunction, data_view_fun)                            \
   V(DATE_FUNCTION_INDEX, JSFunction, date_function)                            \
   V(ERROR_MESSAGE_FOR_CODE_GEN_FROM_STRINGS_INDEX, Object,                     \
@@ -188,7 +185,8 @@ enum BindingFlags {
   V(FLOAT32_ARRAY_FUN_INDEX, JSFunction, float32_array_fun)                    \
   V(FLOAT32X4_FUNCTION_INDEX, JSFunction, float32x4_function)                  \
   V(FLOAT64_ARRAY_FUN_INDEX, JSFunction, float64_array_fun)                    \
-  V(FUNCTION_CACHE_INDEX, ObjectHashTable, function_cache)                     \
+  V(TEMPLATE_INSTANTIATIONS_CACHE_INDEX, ObjectHashTable,                      \
+    template_instantiations_cache)                                             \
   V(FUNCTION_FUNCTION_INDEX, JSFunction, function_function)                    \
   V(GENERATOR_FUNCTION_FUNCTION_INDEX, JSFunction,                             \
     generator_function_function)                                               \
@@ -453,6 +451,9 @@ class Context: public FixedArray {
   Context* declaration_context();
   bool is_declaration_context();
 
+  // Get the next closure's context on the context chain.
+  Context* closure_context();
+
   // Returns a JSGlobalProxy object or null.
   JSObject* global_proxy();
   void set_global_proxy(JSObject* global);
@@ -501,9 +502,6 @@ class Context: public FixedArray {
 
   static int ImportedFieldIndexForName(Handle<String> name);
   static int IntrinsicIndexForName(Handle<String> name);
-
-  static bool IsJSBuiltin(Handle<Context> native_context,
-                          Handle<JSFunction> function);
 
 #define NATIVE_CONTEXT_FIELD_ACCESSORS(index, type, name) \
   inline void set_##name(type* value);                    \

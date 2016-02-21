@@ -508,9 +508,10 @@ namespace {
 void VisitMulHigh(InstructionSelector* selector, Node* node,
                   ArchOpcode opcode) {
   IA32OperandGenerator g(selector);
-  selector->Emit(opcode, g.DefineAsFixed(node, edx),
-                 g.UseFixed(node->InputAt(0), eax),
-                 g.UseUniqueRegister(node->InputAt(1)));
+  InstructionOperand temps[] = {g.TempRegister(eax)};
+  selector->Emit(
+      opcode, g.DefineAsFixed(node, edx), g.UseFixed(node->InputAt(0), eax),
+      g.UseUniqueRegister(node->InputAt(1)), arraysize(temps), temps);
 }
 
 
@@ -589,6 +590,9 @@ void InstructionSelector::VisitWord32Ctz(Node* node) {
   IA32OperandGenerator g(this);
   Emit(kIA32Tzcnt, g.DefineAsRegister(node), g.Use(node->InputAt(0)));
 }
+
+
+void InstructionSelector::VisitWord32ReverseBits(Node* node) { UNREACHABLE(); }
 
 
 void InstructionSelector::VisitWord32Popcnt(Node* node) {
@@ -695,6 +699,19 @@ void InstructionSelector::VisitChangeFloat32ToFloat64(Node* node) {
 }
 
 
+void InstructionSelector::VisitRoundInt32ToFloat32(Node* node) {
+  VisitRO(this, node, kSSEInt32ToFloat32);
+}
+
+
+void InstructionSelector::VisitRoundUint32ToFloat32(Node* node) {
+  IA32OperandGenerator g(this);
+  InstructionOperand temps[] = {g.TempRegister(), g.TempRegister()};
+  Emit(kSSEUint32ToFloat32, g.DefineAsRegister(node), g.Use(node->InputAt(0)),
+       arraysize(temps), temps);
+}
+
+
 void InstructionSelector::VisitChangeInt32ToFloat64(Node* node) {
   VisitRO(this, node, kSSEInt32ToFloat64);
 }
@@ -702,6 +719,16 @@ void InstructionSelector::VisitChangeInt32ToFloat64(Node* node) {
 
 void InstructionSelector::VisitChangeUint32ToFloat64(Node* node) {
   VisitRO(this, node, kSSEUint32ToFloat64);
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToInt32(Node* node) {
+  VisitRO(this, node, kSSEFloat32ToInt32);
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToUint32(Node* node) {
+  VisitRO(this, node, kSSEFloat32ToUint32);
 }
 
 

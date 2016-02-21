@@ -413,11 +413,6 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       frame_access_state()->ClearSPDelta();
       break;
     }
-    case kArchLazyBailout: {
-      EnsureSpaceForLazyDeopt();
-      RecordCallPosition(instr);
-      break;
-    }
     case kArchPrepareCallCFunction: {
       // Frame alignment requires using FP-relative frame addressing.
       frame_access_state()->SetFrameAccessToFP();
@@ -471,6 +466,13 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kArchFramePointer:
       __ mov(i.OutputRegister(), ebp);
       break;
+    case kArchParentFramePointer:
+      if (frame_access_state()->frame()->needs_frame()) {
+        __ mov(i.OutputRegister(), Operand(ebp, 0));
+      } else {
+        __ mov(i.OutputRegister(), ebp);
+      }
+      break;
     case kArchTruncateDoubleToI: {
       auto result = i.OutputRegister();
       auto input = i.InputDoubleRegister(0);
@@ -497,6 +499,18 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
                        MemoryChunk::kPointersFromHereAreInterestingMask,
                        not_zero, ool->entry());
       __ bind(ool->exit());
+      break;
+    }
+    case kArchStackSlot: {
+      FrameOffset offset =
+          frame_access_state()->GetFrameOffset(i.InputInt32(0));
+      Register base;
+      if (offset.from_stack_pointer()) {
+        base = esp;
+      } else {
+        base = ebp;
+      }
+      __ lea(i.OutputRegister(), Operand(base, offset.offset()));
       break;
     }
     case kIA32Add:
@@ -739,6 +753,21 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
     case kSSEFloat64ToFloat32:
       __ cvtsd2ss(i.OutputDoubleRegister(), i.InputOperand(0));
       break;
+    case kSSEFloat32ToInt32:
+      __ cvttss2si(i.OutputRegister(), i.InputOperand(0));
+      break;
+    case kSSEFloat32ToUint32: {
+      Label success;
+      __ cvttss2si(i.OutputRegister(), i.InputOperand(0));
+      __ test(i.OutputRegister(), i.OutputRegister());
+      __ j(positive, &success);
+      __ Move(kScratchDoubleReg, static_cast<float>(INT32_MIN));
+      __ addss(kScratchDoubleReg, i.InputOperand(0));
+      __ cvttss2si(i.OutputRegister(), kScratchDoubleReg);
+      __ or_(i.OutputRegister(), Immediate(0x80000000));
+      __ bind(&success);
+      break;
+    }
     case kSSEFloat64ToInt32:
       __ cvttsd2si(i.OutputRegister(), i.InputOperand(0));
       break;
@@ -747,6 +776,16 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       __ addsd(kScratchDoubleReg, i.InputOperand(0));
       __ cvttsd2si(i.OutputRegister(), kScratchDoubleReg);
       __ add(i.OutputRegister(), Immediate(0x80000000));
+      break;
+    }
+    case kSSEInt32ToFloat32:
+      __ cvtsi2ss(i.OutputDoubleRegister(), i.InputOperand(0));
+      break;
+    case kSSEUint32ToFloat32: {
+      Register scratch0 = i.TempRegister(0);
+      Register scratch1 = i.TempRegister(1);
+      __ mov(scratch0, i.InputOperand(0));
+      __ Cvtui2ss(i.OutputDoubleRegister(), scratch0, scratch1);
       break;
     }
     case kSSEInt32ToFloat64:
@@ -1441,8 +1480,6 @@ void CodeGenerator::AssemblePrologue() {
     // remaining stack slots.
     if (FLAG_code_comments) __ RecordComment("-- OSR entrypoint --");
     osr_pc_offset_ = __ pc_offset();
-    // TODO(titzer): cannot address target function == local #-1
-    __ mov(edi, Operand(ebp, JavaScriptFrameConstants::kFunctionOffset));
     stack_shrink_slots -= OsrHelper(info()).UnoptimizedFrameSlots();
   }
 

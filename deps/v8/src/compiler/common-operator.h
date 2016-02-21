@@ -14,11 +14,7 @@ namespace internal {
 
 // Forward declarations.
 class ExternalReference;
-template <class>
-class TypeImpl;
-struct ZoneTypeConfig;
-typedef TypeImpl<ZoneTypeConfig> Type;
-
+class Type;
 
 namespace compiler {
 
@@ -174,7 +170,6 @@ class CommonOperatorBuilder final : public ZoneObject {
   const Operator* Call(const CallDescriptor* descriptor);
   const Operator* TailCall(const CallDescriptor* descriptor);
   const Operator* Projection(size_t index);
-  const Operator* LazyBailout();
 
   // Constructs a new merge or phi operator with the same opcode as {op}, but
   // with {size} inputs.

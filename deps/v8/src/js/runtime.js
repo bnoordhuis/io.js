@@ -36,16 +36,6 @@ utils.ImportFromExperimental(function(from) {
 
 // ----------------------------------------------------------------------------
 
-/* -----------------------------
-   - - -   H e l p e r s   - - -
-   -----------------------------
-*/
-
-function CONCAT_ITERABLE_TO_ARRAY(iterable) {
-  return %concat_iterable_to_array(this, iterable);
-};
-
-
 /* -------------------------------------
    - - -   C o n v e r s i o n s   - - -
    -------------------------------------
@@ -53,11 +43,11 @@ function CONCAT_ITERABLE_TO_ARRAY(iterable) {
 
 // ES5, section 9.12
 function SameValue(x, y) {
-  if (typeof x != typeof y) return false;
+  if (typeof x !== typeof y) return false;
   if (IS_NUMBER(x)) {
     if (NUMBER_IS_NAN(x) && NUMBER_IS_NAN(y)) return true;
     // x is +0 and y is -0 or vice versa.
-    if (x === 0 && y === 0 && %_IsMinusZero(x) != %_IsMinusZero(y)) {
+    if (x === 0 && y === 0 && 1/x !== 1/y) {
       return false;
     }
   }
@@ -68,7 +58,7 @@ function SameValue(x, y) {
 
 // ES6, section 7.2.4
 function SameValueZero(x, y) {
-  if (typeof x != typeof y) return false;
+  if (typeof x !== typeof y) return false;
   if (IS_NUMBER(x)) {
     if (NUMBER_IS_NAN(x) && NUMBER_IS_NAN(y)) return true;
   }
@@ -179,10 +169,6 @@ utils.Export(function(to) {
   to.ToPositiveInteger = ToPositiveInteger;
   to.SpeciesConstructor = SpeciesConstructor;
 });
-
-%InstallToContext([
-  "concat_iterable_to_array_builtin", CONCAT_ITERABLE_TO_ARRAY,
-]);
 
 %InstallToContext([
   "concat_iterable_to_array", ConcatIterableToArray,

@@ -32,6 +32,7 @@ enum WasmSectionDeclCode {
   kDeclFunctionTable = 0x05,
   kDeclWLL = 0x11,
   kDeclEnd = 0x06,
+  kDeclStartFunction = 0x07,
 };
 
 static const int kMaxModuleSectionCode = 6;
@@ -51,14 +52,15 @@ static const size_t kDeclDataSegmentSize = 13;
 // Static representation of a wasm function.
 struct WasmFunction {
   FunctionSig* sig;      // signature of the function.
+  uint32_t func_index;   // index into the function table.
   uint16_t sig_index;    // index into the signature table.
   uint32_t name_offset;  // offset in the module bytes of the name, if any.
   uint32_t code_start_offset;    // offset in the module bytes of code start.
   uint32_t code_end_offset;      // offset in the module bytes of code end.
-  uint16_t local_int32_count;    // number of int32 local variables.
-  uint16_t local_int64_count;    // number of int64 local variables.
-  uint16_t local_float32_count;  // number of float32 local variables.
-  uint16_t local_float64_count;  // number of float64 local variables.
+  uint16_t local_i32_count;      // number of i32 local variables.
+  uint16_t local_i64_count;      // number of i64 local variables.
+  uint16_t local_f32_count;      // number of f32 local variables.
+  uint16_t local_f64_count;      // number of f64 local variables.
   bool exported;                 // true if this function is exported.
   bool external;  // true if this function is externally supplied.
 };
@@ -93,6 +95,7 @@ struct WasmModule {
   uint8_t max_mem_size_log2;  // maximum size of the memory (log base 2).
   bool mem_export;            // true if the memory is exported.
   bool mem_external;          // true if the memory is external.
+  int start_function_index;   // start function, if any.
 
   std::vector<WasmGlobal>* globals;             // globals in this module.
   std::vector<FunctionSig*>* signatures;        // signatures in this module.
@@ -104,14 +107,14 @@ struct WasmModule {
   ~WasmModule();
 
   // Get a pointer to a string stored in the module bytes representing a name.
-  const char* GetName(uint32_t offset) {
-    CHECK(BoundsCheck(offset, offset + 1));
+  const char* GetName(uint32_t offset) const {
     if (offset == 0) return "<?>";  // no name.
+    CHECK(BoundsCheck(offset, offset + 1));
     return reinterpret_cast<const char*>(module_start + offset);
   }
 
   // Checks the given offset range is contained within the module bytes.
-  bool BoundsCheck(uint32_t start, uint32_t end) {
+  bool BoundsCheck(uint32_t start, uint32_t end) const {
     size_t size = module_end - module_start;
     return start < size && end < size;
   }
@@ -121,22 +124,41 @@ struct WasmModule {
                                     Handle<JSArrayBuffer> memory);
 };
 
+// An instantiated WASM module, including memory, function table, etc.
+struct WasmModuleInstance {
+  WasmModule* module;  // static representation of the module.
+  // -- Heap allocated --------------------------------------------------------
+  Handle<JSObject> js_object;            // JavaScript module object.
+  Handle<Context> context;               // JavaScript native context.
+  Handle<JSArrayBuffer> mem_buffer;      // Handle to array buffer of memory.
+  Handle<JSArrayBuffer> globals_buffer;  // Handle to array buffer of globals.
+  Handle<FixedArray> function_table;     // indirect function table.
+  std::vector<Handle<Code>>* function_code;  // code objects for each function.
+  // -- raw memory ------------------------------------------------------------
+  byte* mem_start;  // start of linear memory.
+  size_t mem_size;  // size of the linear memory.
+  // -- raw globals -----------------------------------------------------------
+  byte* globals_start;  // start of the globals area.
+  size_t globals_size;  // size of the globals area.
+
+  explicit WasmModuleInstance(WasmModule* m)
+      : module(m),
+        function_code(nullptr),
+        mem_start(nullptr),
+        mem_size(0),
+        globals_start(nullptr),
+        globals_size(0) {}
+};
+
 // forward declaration.
 class WasmLinker;
 
 // Interface provided to the decoder/graph builder which contains only
 // minimal information about the globals, functions, and function tables.
 struct ModuleEnv {
-  uintptr_t globals_area;  // address of the globals area.
-  uintptr_t mem_start;     // address of the start of linear memory.
-  uintptr_t mem_end;       // address of the end of linear memory.
-
   WasmModule* module;
+  WasmModuleInstance* instance;
   WasmLinker* linker;
-  std::vector<Handle<Code>>* function_code;
-  Handle<FixedArray> function_table;
-  Handle<JSArrayBuffer> memory;
-  Handle<Context> context;
   bool asm_js;  // true if the module originated from asm.js.
 
   bool IsValidGlobal(uint32_t index) {
@@ -161,7 +183,8 @@ struct ModuleEnv {
     return module->signatures->at(index);
   }
   size_t FunctionTableSize() {
-    return module ? module->function_table->size() : 0;
+    return module && module->function_table ? module->function_table->size()
+                                            : 0;
   }
 
   Handle<Code> GetFunctionCode(uint32_t index);
@@ -171,8 +194,17 @@ struct ModuleEnv {
   compiler::CallDescriptor* GetCallDescriptor(Zone* zone, uint32_t index);
 };
 
+// A helper for printing out the names of functions.
+struct WasmFunctionName {
+  const WasmFunction* function_;
+  const WasmModule* module_;
+  WasmFunctionName(const WasmFunction* function, const ModuleEnv* menv)
+      : function_(function), module_(menv ? menv->module : nullptr) {}
+};
+
 std::ostream& operator<<(std::ostream& os, const WasmModule& module);
 std::ostream& operator<<(std::ostream& os, const WasmFunction& function);
+std::ostream& operator<<(std::ostream& os, const WasmFunctionName& name);
 
 typedef Result<WasmModule*> ModuleResult;
 typedef Result<WasmFunction*> FunctionResult;
@@ -185,6 +217,7 @@ int32_t CompileAndRunWasmModule(Isolate* isolate, const byte* module_start,
 // For testing. Decode, verify, and run the last exported function in the
 // given decoded module.
 int32_t CompileAndRunWasmModule(Isolate* isolate, WasmModule* module);
+
 }  // namespace wasm
 }  // namespace internal
 }  // namespace v8

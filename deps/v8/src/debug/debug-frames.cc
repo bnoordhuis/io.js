@@ -44,33 +44,36 @@ int FrameInspector::GetParametersCount() {
                        : frame_->ComputeParametersCount();
 }
 
-
-Object* FrameInspector::GetFunction() {
-  return is_optimized_ ? deoptimized_frame_->GetFunction() : frame_->function();
+Handle<Object> FrameInspector::GetFunction() {
+  return is_optimized_ ? deoptimized_frame_->GetFunction()
+                       : handle(frame_->function(), isolate_);
 }
 
-
-Object* FrameInspector::GetParameter(int index) {
+Handle<Object> FrameInspector::GetParameter(int index) {
   return is_optimized_ ? deoptimized_frame_->GetParameter(index)
-                       : frame_->GetParameter(index);
+                       : handle(frame_->GetParameter(index), isolate_);
 }
 
-
-Object* FrameInspector::GetExpression(int index) {
+Handle<Object> FrameInspector::GetExpression(int index) {
   // TODO(turbofan): Revisit once we support deoptimization.
   if (frame_->LookupCode()->is_turbofanned() &&
       frame_->function()->shared()->asm_function() &&
       !FLAG_turbo_asm_deoptimization) {
-    return isolate_->heap()->undefined_value();
+    return isolate_->factory()->undefined_value();
   }
   return is_optimized_ ? deoptimized_frame_->GetExpression(index)
-                       : frame_->GetExpression(index);
+                       : handle(frame_->GetExpression(index), isolate_);
 }
 
 
 int FrameInspector::GetSourcePosition() {
-  return is_optimized_ ? deoptimized_frame_->GetSourcePosition()
-                       : frame_->LookupCode()->SourcePosition(frame_->pc());
+  if (is_optimized_) {
+    return deoptimized_frame_->GetSourcePosition();
+  } else {
+    Code* code = frame_->LookupCode();
+    int offset = static_cast<int>(frame_->pc() - code->instruction_start());
+    return code->SourcePosition(offset);
+  }
 }
 
 
@@ -80,9 +83,9 @@ bool FrameInspector::IsConstructor() {
              : frame_->IsConstructor();
 }
 
-
-Object* FrameInspector::GetContext() {
-  return is_optimized_ ? deoptimized_frame_->GetContext() : frame_->context();
+Handle<Object> FrameInspector::GetContext() {
+  return is_optimized_ ? deoptimized_frame_->GetContext()
+                       : handle(frame_->context(), isolate_);
 }
 
 
@@ -109,10 +112,10 @@ void FrameInspector::MaterializeStackLocals(Handle<JSObject> target,
     Handle<String> name(scope_info->ParameterName(i));
     if (ParameterIsShadowedByContextLocal(scope_info, name)) continue;
 
-    Handle<Object> value(i < GetParametersCount()
-                             ? GetParameter(i)
-                             : isolate_->heap()->undefined_value(),
-                         isolate_);
+    Handle<Object> value =
+        i < GetParametersCount()
+            ? GetParameter(i)
+            : Handle<Object>::cast(isolate_->factory()->undefined_value());
     DCHECK(!value->IsTheHole());
 
     JSObject::SetOwnPropertyIgnoreAttributes(target, name, value, NONE).Check();
@@ -122,8 +125,7 @@ void FrameInspector::MaterializeStackLocals(Handle<JSObject> target,
   for (int i = 0; i < scope_info->StackLocalCount(); ++i) {
     if (scope_info->LocalIsSynthetic(i)) continue;
     Handle<String> name(scope_info->StackLocalName(i));
-    Handle<Object> value(GetExpression(scope_info->StackLocalIndex(i)),
-                         isolate_);
+    Handle<Object> value = GetExpression(scope_info->StackLocalIndex(i));
     if (value->IsTheHole()) value = isolate_->factory()->undefined_value();
 
     JSObject::SetOwnPropertyIgnoreAttributes(target, name, value, NONE).Check();

@@ -401,10 +401,19 @@ void InstructionSelector::VisitWord32Clz(Node* node) {
 }
 
 
-void InstructionSelector::VisitWord32Ctz(Node* node) { UNREACHABLE(); }
+void InstructionSelector::VisitWord32ReverseBits(Node* node) { UNREACHABLE(); }
 
 
-void InstructionSelector::VisitWord32Popcnt(Node* node) { UNREACHABLE(); }
+void InstructionSelector::VisitWord32Ctz(Node* node) {
+  MipsOperandGenerator g(this);
+  Emit(kMipsCtz, g.DefineAsRegister(node), g.UseRegister(node->InputAt(0)));
+}
+
+
+void InstructionSelector::VisitWord32Popcnt(Node* node) {
+  MipsOperandGenerator g(this);
+  Emit(kMipsPopcnt, g.DefineAsRegister(node), g.UseRegister(node->InputAt(0)));
+}
 
 
 void InstructionSelector::VisitInt32Add(Node* node) {
@@ -503,6 +512,16 @@ void InstructionSelector::VisitChangeFloat32ToFloat64(Node* node) {
 }
 
 
+void InstructionSelector::VisitRoundInt32ToFloat32(Node* node) {
+  VisitRR(this, kMipsCvtSW, node);
+}
+
+
+void InstructionSelector::VisitRoundUint32ToFloat32(Node* node) {
+  UNIMPLEMENTED();
+}
+
+
 void InstructionSelector::VisitChangeInt32ToFloat64(Node* node) {
   VisitRR(this, kMipsCvtDW, node);
 }
@@ -510,6 +529,16 @@ void InstructionSelector::VisitChangeInt32ToFloat64(Node* node) {
 
 void InstructionSelector::VisitChangeUint32ToFloat64(Node* node) {
   VisitRR(this, kMipsCvtDUw, node);
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToInt32(Node* node) {
+  VisitRR(this, kMipsTruncWS, node);
+}
+
+
+void InstructionSelector::VisitTruncateFloat32ToUint32(Node* node) {
+  UNIMPLEMENTED();
 }
 
 
@@ -1318,7 +1347,9 @@ InstructionSelector::SupportedMachineOperatorFlags() {
              MachineOperatorBuilder::kFloat64RoundTruncate |
              MachineOperatorBuilder::kFloat64RoundTiesEven;
   }
-  return flags | MachineOperatorBuilder::kInt32DivIsSafe |
+  return flags | MachineOperatorBuilder::kWord32Ctz |
+         MachineOperatorBuilder::kWord32Popcnt |
+         MachineOperatorBuilder::kInt32DivIsSafe |
          MachineOperatorBuilder::kUint32DivIsSafe |
          MachineOperatorBuilder::kWord32ShiftIsSafe |
          MachineOperatorBuilder::kFloat64Min |

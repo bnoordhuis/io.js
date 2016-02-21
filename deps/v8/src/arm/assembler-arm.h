@@ -950,6 +950,9 @@ class Assembler : public AssemblerBase {
   void uxtah(Register dst, Register src1, Register src2, int rotate = 0,
              Condition cond = al);
 
+  // Reverse the bits in a register.
+  void rbit(Register dst, Register src, Condition cond = al);
+
   // Status register access instructions
 
   void mrs(Register dst, SRegister s, Condition cond = al);
@@ -1122,6 +1125,18 @@ class Assembler : public AssemblerBase {
                     VFPConversionMode mode = kDefaultRoundToZero,
                     const Condition cond = al);
   void vcvt_f64_u32(const DwVfpRegister dst,
+                    const SwVfpRegister src,
+                    VFPConversionMode mode = kDefaultRoundToZero,
+                    const Condition cond = al);
+  void vcvt_f32_u32(const SwVfpRegister dst,
+                    const SwVfpRegister src,
+                    VFPConversionMode mode = kDefaultRoundToZero,
+                    const Condition cond = al);
+  void vcvt_s32_f32(const SwVfpRegister dst,
+                    const SwVfpRegister src,
+                    VFPConversionMode mode = kDefaultRoundToZero,
+                    const Condition cond = al);
+  void vcvt_u32_f32(const SwVfpRegister dst,
                     const SwVfpRegister src,
                     VFPConversionMode mode = kDefaultRoundToZero,
                     const Condition cond = al);
@@ -1336,7 +1351,7 @@ class Assembler : public AssemblerBase {
 
   // Record a deoptimization reason that can be used by a log or cpu profiler.
   // Use --trace-deopt to enable.
-  void RecordDeoptReason(const int reason, const SourcePosition position);
+  void RecordDeoptReason(const int reason, int raw_position);
 
   // Record the emission of a constant pool.
   //
