@@ -227,11 +227,9 @@ class OutOfLineRecordWrite final : public OutOfLineCode {
     if (mode_ > RecordWriteMode::kValueIsPointer) {
       __ JumpIfSmi(value_, exit());
     }
-    if (mode_ > RecordWriteMode::kValueIsMap) {
-      __ CheckPageFlag(value_, scratch0_,
-                       MemoryChunk::kPointersToHereAreInterestingMask, eq,
-                       exit());
-    }
+    __ CheckPageFlag(value_, scratch0_,
+                     MemoryChunk::kPointersToHereAreInterestingMask, eq,
+                     exit());
     SaveFPRegsMode const save_fp_mode =
         frame()->DidAllocateDoubleRegisters() ? kSaveFPRegs : kDontSaveFPRegs;
     if (!frame()->needs_frame()) {
@@ -1028,6 +1026,12 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       __ cvt_s_w(i.OutputDoubleRegister(), scratch);
       break;
     }
+    case kMipsCvtSUw: {
+      FPURegister scratch = kScratchDoubleReg;
+      __ Cvt_d_uw(i.OutputDoubleRegister(), i.InputRegister(0), scratch);
+      __ cvt_s_d(i.OutputDoubleRegister(), i.OutputDoubleRegister());
+      break;
+    }
     case kMipsCvtDUw: {
       FPURegister scratch = kScratchDoubleReg;
       __ Cvt_d_uw(i.OutputDoubleRegister(), i.InputRegister(0), scratch);
@@ -1086,6 +1090,12 @@ void CodeGenerator::AssembleArchInstruction(Instruction* instr) {
       FPURegister scratch = kScratchDoubleReg;
       // TODO(plind): Fix wrong param order of Trunc_uw_d() macro-asm function.
       __ Trunc_uw_d(i.InputDoubleRegister(0), i.OutputRegister(), scratch);
+      break;
+    }
+    case kMipsTruncUwS: {
+      FPURegister scratch = kScratchDoubleReg;
+      // TODO(plind): Fix wrong param order of Trunc_uw_s() macro-asm function.
+      __ Trunc_uw_s(i.InputDoubleRegister(0), i.OutputRegister(), scratch);
       break;
     }
     case kMipsFloat64ExtractLowWord32:

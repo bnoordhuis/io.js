@@ -305,7 +305,7 @@ void AstNumberingVisitor::VisitWhileStatement(WhileStatement* node) {
 
 void AstNumberingVisitor::VisitTryCatchStatement(TryCatchStatement* node) {
   IncrementNodeCount();
-  DisableOptimization(kTryCatchStatement);
+  DisableCrankshaft(kTryCatchStatement);
   Visit(node->try_block());
   Visit(node->catch_block());
 }
@@ -505,7 +505,7 @@ void AstNumberingVisitor::VisitArrayLiteral(ArrayLiteral* node) {
 void AstNumberingVisitor::VisitCall(Call* node) {
   IncrementNodeCount();
   if (node->tail_call_mode() == TailCallMode::kAllow) {
-    DisableCrankshaft(kTailCall);
+    DisableOptimization(kTailCall);
   }
   ReserveFeedbackSlots(node);
   node->set_base_id(ReserveIdRange(Call::num_ids()));
@@ -554,10 +554,10 @@ void AstNumberingVisitor::VisitFunctionLiteral(FunctionLiteral* node) {
 }
 
 
-void AstNumberingVisitor::VisitRewritableAssignmentExpression(
-    RewritableAssignmentExpression* node) {
+void AstNumberingVisitor::VisitRewritableExpression(
+    RewritableExpression* node) {
   IncrementNodeCount();
-  node->set_base_id(ReserveIdRange(RewritableAssignmentExpression::num_ids()));
+  node->set_base_id(ReserveIdRange(RewritableExpression::num_ids()));
   Visit(node->expression());
 }
 

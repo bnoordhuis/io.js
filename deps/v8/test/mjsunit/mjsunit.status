@@ -44,7 +44,6 @@
   'regress/regress-crbug-160010': [SKIP],
 
   # Issue 4698: not fully supported by Turbofan yet
-  'es6/tail-call-simple': [SKIP],
   'es6/tail-call': [PASS, NO_VARIANTS],
 
   # Issue 3389: deopt_every_n_garbage_collections is unsafe
@@ -208,7 +207,8 @@
   'regress/regress-crbug-491062': [PASS, NO_VARIANTS],
 
   # Issue 488: this test sometimes times out.
-  'array-constructor': [PASS, TIMEOUT],
+  # TODO(arm): This seems to flush out a bug on arm with simulator.
+  'array-constructor': [PASS, TIMEOUT, ['arch == arm and simulator == True', SKIP]],
 
   # Issue 4413: this test sometimes times out with TSAN because we trigger
   # the slow path in C++ with holey arrays in Function.prototype.apply.
@@ -603,6 +603,7 @@
 ['arch == x87', {
   # Turbofan will hit the known issue that x87 changes sNaN to qNaN by default.
   'regress/regress-undefined-nan': [SKIP],
+  'regress/regress-crbug-242924': [SKIP],
 }],  # 'arch == x87'
 
 ##############################################################################
@@ -829,6 +830,7 @@
   'harmony/regress/regress-4482': [FAIL],
   'harmony/reflect': [FAIL],
   'harmony/generators': [FAIL],
+  'harmony/iterator-close': [FAIL],
   'regress/regress-572589': [FAIL],
   'harmony/reflect-construct': [FAIL],
   'es6/promises': [FAIL],
@@ -837,9 +839,6 @@
   # TODO(rmcilroy,4680): Check failed in
   # BytecodeGenerator::VisitFunctionLiteral - !shared_info.is_null().
   'regress/regress-crbug-429159': [FAIL],
-
-  # TODO(rmcilroy,4680): Check failed: osr_normal_entry.
-  'regress/regress-123919': [FAIL],
 
   # TODO(rmcilroy,4680): Pass on debug, fail on release.
   'compiler/regress-stacktrace-methods': [PASS, ['mode == release', FAIL]],
@@ -850,9 +849,6 @@
   'debug-liveedit-2': [FAIL],
   'compiler/deopt-tonumber-compare': [FAIL],
   'es6/string-search': [FAIL],
-  'es6/tail-call-proxies': [FAIL],
-  'es6/tail-call': [FAIL],
-  'es6/tail-call-simple': [FAIL],
   'es6/mirror-collections': [FAIL],
   'es6/regress/regress-468661': [FAIL],
   'harmony/string-replace': [FAIL],
@@ -869,6 +865,9 @@
   'regress/regress-crbug-568477-1': [FAIL],
   'regress/regress-2318': [FAIL],
   'regress/regress-crbug-582051': [FAIL],
+
+  # TODO(rmcilroy, 4680): new ES6 instanceof support
+  'harmony/instanceof-es6': [SKIP],
 
   # TODO(rmcilroy,4680): Test timeouts.
   'array-literal-transitions': [SKIP],

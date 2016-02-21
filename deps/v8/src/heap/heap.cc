@@ -38,6 +38,7 @@
 #include "src/snapshot/natives.h"
 #include "src/snapshot/serialize.h"
 #include "src/snapshot/snapshot.h"
+#include "src/tracing/trace-event.h"
 #include "src/type-feedback-vector.h"
 #include "src/utils.h"
 #include "src/v8.h"
@@ -817,6 +818,7 @@ void Heap::FinalizeIncrementalMarking(const char* gc_reason) {
   GCTracer::Scope gc_scope(tracer(), GCTracer::Scope::MC_INCREMENTAL_FINALIZE);
   HistogramTimerScope incremental_marking_scope(
       isolate()->counters()->gc_incremental_marking_finalize());
+  TRACE_EVENT0("v8", "V8.GCIncrementalMarkingFinalize");
 
   {
     GCCallbacksScope scope(this);
@@ -857,7 +859,6 @@ HistogramTimer* Heap::GCTypeTimer(GarbageCollector collector) {
     }
   }
 }
-
 
 void Heap::CollectAllGarbage(int flags, const char* gc_reason,
                              const v8::GCCallbackFlags gc_callback_flags) {
@@ -1006,7 +1007,9 @@ bool Heap::CollectGarbage(GarbageCollector collector, const char* gc_reason,
     GarbageCollectionPrologue();
 
     {
-      HistogramTimerScope histogram_timer_scope(GCTypeTimer(collector));
+      HistogramTimer* gc_type_timer = GCTypeTimer(collector);
+      HistogramTimerScope histogram_timer_scope(gc_type_timer);
+      TRACE_EVENT0("v8", gc_type_timer->name());
 
       next_gc_likely_to_collect_more =
           PerformGarbageCollection(collector, gc_callback_flags);
@@ -1627,9 +1630,6 @@ void Heap::Scavenge() {
 
   // Implements Cheney's copying algorithm
   LOG(isolate_, ResourceEvent("scavenge", "begin"));
-
-  // Clear descriptor cache.
-  isolate_->descriptor_lookup_cache()->Clear();
 
   // Used for updating survived_since_last_expansion_ at function end.
   intptr_t survived_watermark = PromotedSpaceSizeOfObjects();
@@ -2667,17 +2667,6 @@ void Heap::CreateInitialObjects() {
     roots_[constant_string_table[i].index] = *str;
   }
 
-  // The {hidden_string} is special because it is an empty string, but does not
-  // match any string (even the {empty_string}) when looked up in properties.
-  // Allocate the hidden string which is used to identify the hidden properties
-  // in JSObjects. The hash code has a special value so that it will not match
-  // the empty string when searching for the property. It cannot be part of the
-  // loop above because it needs to be allocated manually with the special
-  // hash code in place. The hash code for the hidden_string is zero to ensure
-  // that it will always be at the first entry in property descriptors.
-  set_hidden_string(*factory->NewOneByteInternalizedString(
-      OneByteVector("", 0), String::kEmptyStringHash));
-
   // Create the code_stubs dictionary. The initial size is set to avoid
   // expanding the dictionary during bootstrapping.
   set_code_stubs(*UnseededNumberDictionary::New(isolate(), 128));
@@ -2705,6 +2694,14 @@ void Heap::CreateInitialObjects() {
     PRIVATE_SYMBOL_LIST(SYMBOL_INIT)
 #undef SYMBOL_INIT
   }
+
+  // The {hidden_properties_symbol} is special because it is the only name with
+  // hash code zero. This ensures that it will always be the first entry as
+  // sorted by hash code in descriptor arrays. It is used to identify the hidden
+  // properties in JSObjects.
+  // kIsNotArrayIndexMask is a computed hash with value zero.
+  Symbol::cast(roots_[khidden_properties_symbolRootIndex])
+      ->set_hash_field(Name::kIsNotArrayIndexMask);
 
   {
     HandleScope scope(isolate());
@@ -3032,6 +3029,7 @@ AllocationResult Heap::AllocateBytecodeArray(int length,
   instance->set_length(length);
   instance->set_frame_size(frame_size);
   instance->set_parameter_count(parameter_count);
+  instance->set_interrupt_budget(interpreter::Interpreter::InterruptBudget());
   instance->set_constant_pool(constant_pool);
   instance->set_handler_table(empty_fixed_array());
   instance->set_source_position_table(empty_fixed_array());
@@ -3144,6 +3142,11 @@ FixedArrayBase* Heap::LeftTrimFixedArray(FixedArrayBase* object,
 
   // Maintain consistency of live bytes during incremental marking
   Marking::TransferMark(this, object->address(), new_start);
+  if (mark_compact_collector()->sweeping_in_progress()) {
+    // Array trimming during sweeping can add invalid slots in free list.
+    ClearRecordedSlotRange(object, former_start,
+                           HeapObject::RawField(new_object, 0));
+  }
   AdjustLiveBytes(new_object, -bytes_to_trim, Heap::CONCURRENT_TO_SWEEPER);
 
   // Notify the heap profiler of change in object layout.
@@ -3193,7 +3196,8 @@ void Heap::RightTrimFixedArray(FixedArrayBase* object, int elements_to_trim) {
   }
 
   // Calculate location of new array end.
-  Address new_end = object->address() + object->Size() - bytes_to_trim;
+  Address old_end = object->address() + object->Size();
+  Address new_end = old_end - bytes_to_trim;
 
   // Technically in new space this write might be omitted (except for
   // debug mode which iterates through the heap), but to play safer
@@ -3203,6 +3207,11 @@ void Heap::RightTrimFixedArray(FixedArrayBase* object, int elements_to_trim) {
   // of the object changed significantly.
   if (!lo_space()->Contains(object)) {
     CreateFillerObjectAt(new_end, bytes_to_trim);
+    if (mark_compact_collector()->sweeping_in_progress()) {
+      // Array trimming during sweeping can add invalid slots in free list.
+      ClearRecordedSlotRange(object, reinterpret_cast<Object**>(new_end),
+                             reinterpret_cast<Object**>(old_end));
+    }
   }
 
   // Initialize header of the trimmed array. We are storing the new length
@@ -4196,6 +4205,7 @@ bool Heap::PerformIdleTimeAction(GCIdleTimeAction action,
     case DO_FULL_GC: {
       DCHECK(contexts_disposed_ > 0);
       HistogramTimerScope scope(isolate_->counters()->gc_context());
+      TRACE_EVENT0("v8", "V8.GCContext");
       CollectAllGarbage(kNoGCFlags, "idle notification: contexts disposed");
       break;
     }
@@ -4281,6 +4291,7 @@ bool Heap::IdleNotification(double deadline_in_seconds) {
       static_cast<double>(base::Time::kMillisecondsPerSecond);
   HistogramTimerScope idle_notification_scope(
       isolate_->counters()->gc_idle_notification());
+  TRACE_EVENT0("v8", "V8.GCIdleNotification");
   double start_ms = MonotonicallyIncreasingTimeInMs();
   double idle_time_in_ms = deadline_in_ms - start_ms;
 
@@ -5530,6 +5541,18 @@ void Heap::ClearRecordedSlot(HeapObject* object, Object** slot) {
     Page* page = Page::FromAddress(slot_addr);
     DCHECK_EQ(page->owner()->identity(), OLD_SPACE);
     RememberedSet<OLD_TO_NEW>::Remove(page, slot_addr);
+  }
+}
+
+void Heap::ClearRecordedSlotRange(HeapObject* object, Object** start,
+                                  Object** end) {
+  if (!InNewSpace(object)) {
+    store_buffer()->MoveEntriesToRememberedSet();
+    Address start_addr = reinterpret_cast<Address>(start);
+    Address end_addr = reinterpret_cast<Address>(end);
+    Page* page = Page::FromAddress(start_addr);
+    DCHECK_EQ(page->owner()->identity(), OLD_SPACE);
+    RememberedSet<OLD_TO_NEW>::RemoveRange(page, start_addr, end_addr);
   }
 }
 

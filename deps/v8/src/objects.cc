@@ -1491,25 +1491,22 @@ bool Object::SameValue(Object* other) {
   if (IsString() && other->IsString()) {
     return String::cast(this)->Equals(String::cast(other));
   }
-  if (IsSimd128Value() && other->IsSimd128Value()) {
-    if (IsFloat32x4() && other->IsFloat32x4()) {
-      Float32x4* a = Float32x4::cast(this);
-      Float32x4* b = Float32x4::cast(other);
-      for (int i = 0; i < 4; i++) {
-        float x = a->get_lane(i);
-        float y = b->get_lane(i);
-        // Implements the ES5 SameValue operation for floating point types.
-        // http://www.ecma-international.org/ecma-262/6.0/#sec-samevalue
-        if (x != y && !(std::isnan(x) && std::isnan(y))) return false;
-        if (std::signbit(x) != std::signbit(y)) return false;
-      }
-      return true;
-    } else {
-      Simd128Value* a = Simd128Value::cast(this);
-      Simd128Value* b = Simd128Value::cast(other);
-      return a->map()->instance_type() == b->map()->instance_type() &&
-             a->BitwiseEquals(b);
+  if (IsFloat32x4() && other->IsFloat32x4()) {
+    Float32x4* a = Float32x4::cast(this);
+    Float32x4* b = Float32x4::cast(other);
+    for (int i = 0; i < 4; i++) {
+      float x = a->get_lane(i);
+      float y = b->get_lane(i);
+      // Implements the ES5 SameValue operation for floating point types.
+      // http://www.ecma-international.org/ecma-262/6.0/#sec-samevalue
+      if (x != y && !(std::isnan(x) && std::isnan(y))) return false;
+      if (std::signbit(x) != std::signbit(y)) return false;
     }
+    return true;
+  } else if (IsSimd128Value() && other->IsSimd128Value()) {
+    Simd128Value* a = Simd128Value::cast(this);
+    Simd128Value* b = Simd128Value::cast(other);
+    return a->map() == b->map() && a->BitwiseEquals(b);
   }
   return false;
 }
@@ -1530,25 +1527,22 @@ bool Object::SameValueZero(Object* other) {
   if (IsString() && other->IsString()) {
     return String::cast(this)->Equals(String::cast(other));
   }
-  if (IsSimd128Value() && other->IsSimd128Value()) {
-    if (IsFloat32x4() && other->IsFloat32x4()) {
-      Float32x4* a = Float32x4::cast(this);
-      Float32x4* b = Float32x4::cast(other);
-      for (int i = 0; i < 4; i++) {
-        float x = a->get_lane(i);
-        float y = b->get_lane(i);
-        // Implements the ES6 SameValueZero operation for floating point types.
-        // http://www.ecma-international.org/ecma-262/6.0/#sec-samevaluezero
-        if (x != y && !(std::isnan(x) && std::isnan(y))) return false;
-        // SameValueZero doesn't distinguish between 0 and -0.
-      }
-      return true;
-    } else {
-      Simd128Value* a = Simd128Value::cast(this);
-      Simd128Value* b = Simd128Value::cast(other);
-      return a->map()->instance_type() == b->map()->instance_type() &&
-             a->BitwiseEquals(b);
+  if (IsFloat32x4() && other->IsFloat32x4()) {
+    Float32x4* a = Float32x4::cast(this);
+    Float32x4* b = Float32x4::cast(other);
+    for (int i = 0; i < 4; i++) {
+      float x = a->get_lane(i);
+      float y = b->get_lane(i);
+      // Implements the ES6 SameValueZero operation for floating point types.
+      // http://www.ecma-international.org/ecma-262/6.0/#sec-samevaluezero
+      if (x != y && !(std::isnan(x) && std::isnan(y))) return false;
+      // SameValueZero doesn't distinguish between 0 and -0.
     }
+    return true;
+  } else if (IsSimd128Value() && other->IsSimd128Value()) {
+    Simd128Value* a = Simd128Value::cast(this);
+    Simd128Value* b = Simd128Value::cast(other);
+    return a->map() == b->map() && a->BitwiseEquals(b);
   }
   return false;
 }
@@ -3075,17 +3069,19 @@ void MigrateFastToSlow(Handle<JSObject> object, Handle<Map> new_map,
 void JSObject::MigrateToMap(Handle<JSObject> object, Handle<Map> new_map,
                             int expected_additional_properties) {
   if (object->map() == *new_map) return;
-  // If this object is a prototype (the callee will check), invalidate any
-  // prototype chains involving it.
-  InvalidatePrototypeChains(object->map());
   Handle<Map> old_map(object->map());
+  if (old_map->is_prototype_map()) {
+    // If this object is a prototype (the callee will check), invalidate any
+    // prototype chains involving it.
+    InvalidatePrototypeChains(object->map());
 
-  // If the map was registered with its prototype before, ensure that it
-  // registers with its new prototype now. This preserves the invariant that
-  // when a map on a prototype chain is registered with its prototype, then
-  // all prototypes further up the chain are also registered with their
-  // respective prototypes.
-  UpdatePrototypeUserRegistration(old_map, new_map, new_map->GetIsolate());
+    // If the map was registered with its prototype before, ensure that it
+    // registers with its new prototype now. This preserves the invariant that
+    // when a map on a prototype chain is registered with its prototype, then
+    // all prototypes further up the chain are also registered with their
+    // respective prototypes.
+    UpdatePrototypeUserRegistration(old_map, new_map, new_map->GetIsolate());
+  }
 
   if (old_map->is_dictionary_map()) {
     // For slow-to-fast migrations JSObject::MigrateSlowToFast()
@@ -4242,16 +4238,12 @@ Maybe<bool> Object::SetPropertyInternal(LookupIterator* it,
 Maybe<bool> Object::SetProperty(LookupIterator* it, Handle<Object> value,
                                 LanguageMode language_mode,
                                 StoreFromKeyed store_mode) {
-  ShouldThrow should_throw =
-      is_sloppy(language_mode) ? DONT_THROW : THROW_ON_ERROR;
-  if (it->GetReceiver()->IsJSProxy() && it->GetName()->IsPrivate()) {
-    RETURN_FAILURE(it->isolate(), should_throw,
-                   NewTypeError(MessageTemplate::kProxyPrivate));
-  }
   bool found = false;
   Maybe<bool> result =
       SetPropertyInternal(it, value, language_mode, store_mode, &found);
   if (found) return result;
+  ShouldThrow should_throw =
+      is_sloppy(language_mode) ? DONT_THROW : THROW_ON_ERROR;
   return AddDataProperty(it, value, NONE, should_throw, store_mode);
 }
 
@@ -4259,13 +4251,7 @@ Maybe<bool> Object::SetProperty(LookupIterator* it, Handle<Object> value,
 Maybe<bool> Object::SetSuperProperty(LookupIterator* it, Handle<Object> value,
                                      LanguageMode language_mode,
                                      StoreFromKeyed store_mode) {
-  ShouldThrow should_throw =
-      is_sloppy(language_mode) ? DONT_THROW : THROW_ON_ERROR;
   Isolate* isolate = it->isolate();
-  if (it->GetReceiver()->IsJSProxy() && it->GetName()->IsPrivate()) {
-    RETURN_FAILURE(isolate, should_throw,
-                   NewTypeError(MessageTemplate::kProxyPrivate));
-  }
 
   bool found = false;
   Maybe<bool> result =
@@ -4274,6 +4260,9 @@ Maybe<bool> Object::SetSuperProperty(LookupIterator* it, Handle<Object> value,
 
   // The property either doesn't exist on the holder or exists there as a data
   // property.
+
+  ShouldThrow should_throw =
+      is_sloppy(language_mode) ? DONT_THROW : THROW_ON_ERROR;
 
   if (!it->GetReceiver()->IsJSReceiver()) {
     return WriteToReadOnlyProperty(it, value, should_throw);
@@ -4294,8 +4283,16 @@ Maybe<bool> Object::SetSuperProperty(LookupIterator* it, Handle<Object> value,
         }
         break;
 
-      case LookupIterator::INTEGER_INDEXED_EXOTIC:
       case LookupIterator::ACCESSOR:
+        if (own_lookup.GetAccessors()->IsAccessorInfo()) {
+          if (own_lookup.IsReadOnly()) {
+            return WriteToReadOnlyProperty(&own_lookup, value, should_throw);
+          }
+          return JSObject::SetPropertyWithAccessor(&own_lookup, value,
+                                                   should_throw);
+        }
+      // Fall through.
+      case LookupIterator::INTEGER_INDEXED_EXOTIC:
         return RedefineIncompatibleProperty(isolate, it->GetName(), value,
                                             should_throw);
 
@@ -4401,8 +4398,7 @@ Maybe<bool> Object::SetDataProperty(LookupIterator* it, Handle<Object> value) {
   // Fetch before transforming the object since the encoding may become
   // incompatible with what's cached in |it|.
   bool is_observed = receiver->map()->is_observed() &&
-                     (it->IsElement() ||
-                      !it->isolate()->IsInternallyUsedPropertyName(it->name()));
+                     (it->IsElement() || !it->name()->IsPrivate());
   MaybeHandle<Object> maybe_old;
   if (is_observed) maybe_old = it->GetDataValue();
 
@@ -4491,8 +4487,11 @@ Maybe<bool> Object::AddDataProperty(LookupIterator* it, Handle<Object> value,
                                     PropertyAttributes attributes,
                                     ShouldThrow should_throw,
                                     StoreFromKeyed store_mode) {
-  DCHECK(!it->GetReceiver()->IsJSProxy());
   if (!it->GetReceiver()->IsJSObject()) {
+    if (it->GetReceiver()->IsJSProxy() && it->GetName()->IsPrivate()) {
+      RETURN_FAILURE(it->isolate(), should_throw,
+                     NewTypeError(MessageTemplate::kProxyPrivate));
+    }
     return CannotCreateProperty(it->isolate(), it->GetReceiver(), it->GetName(),
                                 value, should_throw);
   }
@@ -4547,8 +4546,6 @@ Maybe<bool> Object::AddDataProperty(LookupIterator* it, Handle<Object> value,
 
     // TODO(verwaest): Encapsulate dictionary handling better.
     if (receiver->map()->is_dictionary_map()) {
-      // TODO(verwaest): Probably should ensure this is done beforehand.
-      it->InternalizeName();
       // TODO(dcarney): just populate TransitionPropertyCell here?
       JSObject::AddSlowProperty(receiver, it->name(), value, attributes);
     } else {
@@ -4557,8 +4554,7 @@ Maybe<bool> Object::AddDataProperty(LookupIterator* it, Handle<Object> value,
     }
 
     // Send the change record if there are observers.
-    if (receiver->map()->is_observed() &&
-        !isolate->IsInternallyUsedPropertyName(it->name())) {
+    if (receiver->map()->is_observed() && !it->name()->IsPrivate()) {
       RETURN_ON_EXCEPTION_VALUE(isolate, JSObject::EnqueueChangeRecord(
                                              receiver, "add", it->name(),
                                              it->factory()->the_hole_value()),
@@ -5259,8 +5255,7 @@ void JSObject::AddProperty(Handle<JSObject> object, Handle<Name> name,
   Maybe<PropertyAttributes> maybe = GetPropertyAttributes(&it);
   DCHECK(maybe.IsJust());
   DCHECK(!it.IsFound());
-  DCHECK(object->map()->is_extensible() ||
-         it.isolate()->IsInternallyUsedPropertyName(name));
+  DCHECK(object->map()->is_extensible() || name->IsPrivate());
 #endif
   CHECK(AddDataProperty(&it, value, attributes, THROW_ON_ERROR,
                         CERTAINLY_NOT_STORE_FROM_KEYED)
@@ -5286,8 +5281,7 @@ Maybe<bool> JSObject::DefineOwnPropertyIgnoreAttributes(
     ShouldThrow should_throw, AccessorInfoHandling handling) {
   Handle<JSObject> object = Handle<JSObject>::cast(it->GetReceiver());
   bool is_observed = object->map()->is_observed() &&
-                     (it->IsElement() ||
-                      !it->isolate()->IsInternallyUsedPropertyName(it->name()));
+                     (it->IsElement() || !it->name()->IsPrivate());
 
   for (; it->IsFound(); it->Next()) {
     switch (it->state()) {
@@ -6014,10 +6008,12 @@ void JSObject::DeleteHiddenProperty(Handle<JSObject> object, Handle<Name> key) {
 
 
 bool JSObject::HasHiddenProperties(Handle<JSObject> object) {
-  Handle<Name> hidden = object->GetIsolate()->factory()->hidden_string();
-  LookupIterator it(object, hidden, LookupIterator::OWN_SKIP_INTERCEPTOR);
+  Isolate* isolate = object->GetIsolate();
+  Handle<Symbol> hidden = isolate->factory()->hidden_properties_symbol();
+  LookupIterator it(object, hidden);
   Maybe<PropertyAttributes> maybe = GetPropertyAttributes(&it);
-  // Cannot get an exception since the hidden_string isn't accessible to JS.
+  // Cannot get an exception since the hidden_properties_symbol isn't exposed to
+  // JS.
   DCHECK(maybe.IsJust());
   return maybe.FromJust() != ABSENT;
 }
@@ -6033,7 +6029,8 @@ Object* JSObject::GetHiddenPropertiesHashTable() {
     DescriptorArray* descriptors = this->map()->instance_descriptors();
     if (descriptors->number_of_descriptors() > 0) {
       int sorted_index = descriptors->GetSortedKeyIndex(0);
-      if (descriptors->GetKey(sorted_index) == GetHeap()->hidden_string() &&
+      if (descriptors->GetKey(sorted_index) ==
+              GetHeap()->hidden_properties_symbol() &&
           sorted_index < map()->NumberOfOwnDescriptors()) {
         DCHECK(descriptors->GetType(sorted_index) == DATA);
         DCHECK(descriptors->GetDetails(sorted_index).representation().
@@ -6048,9 +6045,8 @@ Object* JSObject::GetHiddenPropertiesHashTable() {
       return GetHeap()->undefined_value();
     }
   } else {
-    Isolate* isolate = GetIsolate();
-    LookupIterator it(handle(this), isolate->factory()->hidden_string(),
-                      LookupIterator::OWN_SKIP_INTERCEPTOR);
+    Handle<Symbol> hidden = GetIsolate()->factory()->hidden_properties_symbol();
+    LookupIterator it(handle(this), hidden);
     // Access check is always skipped for the hidden string anyways.
     return *GetDataProperty(&it);
   }
@@ -6079,7 +6075,7 @@ Handle<Object> JSObject::SetHiddenPropertiesHashTable(Handle<JSObject> object,
                                                       Handle<Object> value) {
   DCHECK(!object->IsJSGlobalProxy());
   Isolate* isolate = object->GetIsolate();
-  Handle<Name> name = isolate->factory()->hidden_string();
+  Handle<Symbol> name = isolate->factory()->hidden_properties_symbol();
   SetOwnPropertyIgnoreAttributes(object, name, value, DONT_ENUM).Assert();
   return object;
 }
@@ -6172,16 +6168,15 @@ Maybe<bool> JSReceiver::DeleteProperty(LookupIterator* it,
   if (it->GetReceiver()->IsJSProxy()) {
     if (it->state() != LookupIterator::NOT_FOUND) {
       DCHECK_EQ(LookupIterator::DATA, it->state());
-      DCHECK(it->GetName()->IsPrivate());
+      DCHECK(it->name()->IsPrivate());
       it->Delete();
     }
     return Just(true);
   }
   Handle<JSObject> receiver = Handle<JSObject>::cast(it->GetReceiver());
 
-  bool is_observed =
-      receiver->map()->is_observed() &&
-      (it->IsElement() || !isolate->IsInternallyUsedPropertyName(it->name()));
+  bool is_observed = receiver->map()->is_observed() &&
+                     (it->IsElement() || !it->name()->IsPrivate());
 
   Handle<Object> old_value = it->factory()->the_hole_value();
 
@@ -7022,7 +7017,7 @@ Maybe<bool> JSProxy::DefineOwnProperty(Isolate* isolate, Handle<JSProxy> proxy,
                                        ShouldThrow should_throw) {
   STACK_CHECK(Nothing<bool>());
   if (key->IsSymbol() && Handle<Symbol>::cast(key)->IsPrivate()) {
-    return AddPrivateProperty(isolate, proxy, Handle<Symbol>::cast(key), desc,
+    return SetPrivateProperty(isolate, proxy, Handle<Symbol>::cast(key), desc,
                               should_throw);
   }
   Handle<String> trap_name = isolate->factory()->defineProperty_string();
@@ -7128,7 +7123,7 @@ Maybe<bool> JSProxy::DefineOwnProperty(Isolate* isolate, Handle<JSProxy> proxy,
 
 
 // static
-Maybe<bool> JSProxy::AddPrivateProperty(Isolate* isolate, Handle<JSProxy> proxy,
+Maybe<bool> JSProxy::SetPrivateProperty(Isolate* isolate, Handle<JSProxy> proxy,
                                         Handle<Symbol> private_name,
                                         PropertyDescriptor* desc,
                                         ShouldThrow should_throw) {
@@ -9039,7 +9034,7 @@ MaybeHandle<Object> JSObject::DefineAccessor(LookupIterator* it,
 
   Handle<Object> old_value = isolate->factory()->the_hole_value();
   bool is_observed = object->map()->is_observed() &&
-                     !isolate->IsInternallyUsedPropertyName(it->GetName());
+                     (it->IsElement() || !it->name()->IsPrivate());
   bool preexists = false;
   if (is_observed) {
     CHECK(GetPropertyAttributes(it).IsJust());
@@ -9870,6 +9865,7 @@ Handle<Map> Map::TransitionToDataProperty(Handle<Map> map, Handle<Name> name,
                                           Handle<Object> value,
                                           PropertyAttributes attributes,
                                           StoreFromKeyed store_mode) {
+  DCHECK(name->IsUniqueName());
   DCHECK(!map->is_dictionary_map());
 
   // Migrate to the newest map before storing the property.
@@ -9950,6 +9946,7 @@ Handle<Map> Map::TransitionToAccessorProperty(Handle<Map> map,
                                               AccessorComponent component,
                                               Handle<Object> accessor,
                                               PropertyAttributes attributes) {
+  DCHECK(name->IsUniqueName());
   Isolate* isolate = name->GetIsolate();
 
   // Dictionary maps can always have additional data properties.
@@ -9988,7 +9985,7 @@ Handle<Map> Map::TransitionToAccessorProperty(Handle<Map> map,
 
   Handle<AccessorPair> pair;
   DescriptorArray* old_descriptors = map->instance_descriptors();
-  int descriptor = old_descriptors->SearchWithCache(*name, *map);
+  int descriptor = old_descriptors->SearchWithCache(isolate, *name, *map);
   if (descriptor != DescriptorArray::kNotFound) {
     if (descriptor != map->LastAdded()) {
       return Map::Normalize(map, mode, "AccessorsOverwritingNonLast");
@@ -10034,9 +10031,6 @@ Handle<Map> Map::CopyAddDescriptor(Handle<Map> map,
                                    TransitionFlag flag) {
   Handle<DescriptorArray> descriptors(map->instance_descriptors());
 
-  // Ensure the key is unique.
-  descriptor->KeyToUniqueName();
-
   // Share descriptors only if map owns descriptors and it not an initial map.
   if (flag == INSERT_TRANSITION && map->owns_descriptors() &&
       !map->GetBackPointer()->IsUndefined() &&
@@ -10065,11 +10059,9 @@ Handle<Map> Map::CopyInsertDescriptor(Handle<Map> map,
                                       TransitionFlag flag) {
   Handle<DescriptorArray> old_descriptors(map->instance_descriptors());
 
-  // Ensure the key is unique.
-  descriptor->KeyToUniqueName();
-
   // We replace the key if it is already present.
-  int index = old_descriptors->SearchWithCache(*descriptor->GetKey(), *map);
+  int index = old_descriptors->SearchWithCache(map->GetIsolate(),
+                                               *descriptor->GetKey(), *map);
   if (index != DescriptorArray::kNotFound) {
     return CopyReplaceDescriptor(map, old_descriptors, descriptor, index, flag);
   }
@@ -10152,9 +10144,6 @@ Handle<Map> Map::CopyReplaceDescriptor(Handle<Map> map,
                                        Descriptor* descriptor,
                                        int insertion_index,
                                        TransitionFlag flag) {
-  // Ensure the key is unique.
-  descriptor->KeyToUniqueName();
-
   Handle<Name> key = descriptor->GetKey();
   DCHECK(*key == descriptors->GetKey(insertion_index));
 
@@ -13438,7 +13427,7 @@ Handle<String> JSFunction::ToString(Handle<JSFunction> function) {
     }
     if (shared_info->name_should_print_as_anonymous()) {
       builder.AppendCString("anonymous");
-    } else {
+    } else if (!shared_info->is_anonymous_expression()) {
       builder.AppendString(handle(String::cast(shared_info->name()), isolate));
     }
   }
@@ -13873,8 +13862,9 @@ void SharedFunctionInfo::InitFromFunctionLiteral(
   shared_info->set_function_token_position(lit->function_token_position());
   shared_info->set_start_position(lit->start_position());
   shared_info->set_end_position(lit->end_position());
-  shared_info->set_is_expression(lit->is_expression());
-  shared_info->set_is_anonymous(lit->is_anonymous());
+  shared_info->set_is_declaration(lit->is_declaration());
+  shared_info->set_is_named_expression(lit->is_named_expression());
+  shared_info->set_is_anonymous_expression(lit->is_anonymous_expression());
   shared_info->set_inferred_name(*lit->inferred_name());
   shared_info->set_allows_lazy_compilation(lit->AllowsLazyCompilation());
   shared_info->set_allows_lazy_compilation_without_context(

@@ -33,6 +33,9 @@ class Interpreter {
   // Initializes the interpreter dispatch table.
   void Initialize();
 
+  // Returns the interrupt budget which should be used for the profiler counter.
+  static int InterruptBudget();
+
   // Generate bytecode for |info|.
   static bool MakeBytecode(CompilationInfo* info);
 
@@ -86,7 +89,7 @@ class Interpreter {
   void DoKeyedStoreIC(Callable ic, InterpreterAssembler* assembler);
 
   // Generates code to perform a JS call.
-  void DoJSCall(InterpreterAssembler* assembler);
+  void DoJSCall(InterpreterAssembler* assembler, TailCallMode tail_call_mode);
 
   // Generates code to perform a runtime call.
   void DoCallRuntimeCommon(InterpreterAssembler* assembler);

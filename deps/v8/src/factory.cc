@@ -211,13 +211,6 @@ Handle<String> Factory::InternalizeUtf8String(Vector<const char> string) {
 }
 
 
-// Internalized strings are created in the old generation (data space).
-Handle<String> Factory::InternalizeString(Handle<String> string) {
-  if (string->IsInternalizedString()) return string;
-  return StringTable::LookupString(isolate(), string);
-}
-
-
 Handle<String> Factory::InternalizeOneByteString(Vector<const uint8_t> string) {
   OneByteStringKey key(string, isolate()->heap()->HashSeed());
   return InternalizeStringWithKey(&key);
@@ -240,12 +233,6 @@ Handle<String> Factory::InternalizeTwoByteString(Vector<const uc16> string) {
 template<class StringTableKey>
 Handle<String> Factory::InternalizeStringWithKey(StringTableKey* key) {
   return StringTable::LookupKey(isolate(), key);
-}
-
-
-Handle<Name> Factory::InternalizeName(Handle<Name> name) {
-  if (name->IsUniqueName()) return name;
-  return InternalizeString(Handle<String>::cast(name));
 }
 
 

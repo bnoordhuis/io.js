@@ -172,6 +172,12 @@ bool HeapObject::IsUniqueName() const {
   return IsInternalizedString() || IsSymbol();
 }
 
+bool Name::IsUniqueName() const {
+  uint32_t type = map()->instance_type();
+  return (type & (kIsNotStringMask | kIsNotInternalizedMask)) !=
+         (kStringTag | kNotInternalizedTag);
+}
+
 bool HeapObject::IsFunction() const {
   STATIC_ASSERT(LAST_FUNCTION_TYPE == LAST_TYPE);
   return map()->instance_type() >= FIRST_FUNCTION_TYPE;
@@ -985,14 +991,14 @@ ElementsKind Object::OptimalElementsKind() {
 
 
 bool Object::FitsRepresentation(Representation representation) {
-  if (FLAG_track_fields && representation.IsNone()) {
-    return false;
-  } else if (FLAG_track_fields && representation.IsSmi()) {
+  if (FLAG_track_fields && representation.IsSmi()) {
     return IsSmi();
   } else if (FLAG_track_double_fields && representation.IsDouble()) {
     return IsMutableHeapNumber() || IsNumber();
   } else if (FLAG_track_heap_object_fields && representation.IsHeapObject()) {
     return IsHeapObject();
+  } else if (FLAG_track_fields && representation.IsNone()) {
+    return false;
   }
   return true;
 }
@@ -2082,15 +2088,10 @@ void JSObject::FastPropertyAtPut(FieldIndex index, Object* value) {
   }
 }
 
-
-void JSObject::WriteToField(int descriptor, Object* value) {
-  DisallowHeapAllocation no_gc;
-
-  DescriptorArray* desc = map()->instance_descriptors();
-  PropertyDetails details = desc->GetDetails(descriptor);
-
+void JSObject::WriteToField(int descriptor, PropertyDetails details,
+                            Object* value) {
   DCHECK(details.type() == DATA);
-
+  DisallowHeapAllocation no_gc;
   FieldIndex index = FieldIndex::ForDescriptor(map(), descriptor);
   if (details.representation().IsDouble()) {
     // Nothing more to be done.
@@ -2107,6 +2108,11 @@ void JSObject::WriteToField(int descriptor, Object* value) {
   }
 }
 
+void JSObject::WriteToField(int descriptor, Object* value) {
+  DescriptorArray* desc = map()->instance_descriptors();
+  PropertyDetails details = desc->GetDetails(descriptor);
+  WriteToField(descriptor, details, value);
+}
 
 int JSObject::GetInObjectPropertyOffset(int index) {
   return map()->GetInObjectPropertyOffset(index);
@@ -2538,15 +2544,14 @@ Object** DescriptorArray::GetEnumCacheSlot() {
                               kEnumCacheOffset);
 }
 
-
-// Perform a binary search in a fixed array. Low and high are entry indices. If
-// there are three entries in this array it should be called with low=0 and
-// high=2.
+// Perform a binary search in a fixed array.
 template <SearchMode search_mode, typename T>
-int BinarySearch(T* array, Name* name, int low, int high, int valid_entries,
+int BinarySearch(T* array, Name* name, int valid_entries,
                  int* out_insertion_index) {
   DCHECK(search_mode == ALL_ENTRIES || out_insertion_index == NULL);
-  uint32_t hash = name->Hash();
+  int low = 0;
+  int high = array->number_of_entries() - 1;
+  uint32_t hash = name->hash_field();
   int limit = high;
 
   DCHECK(low <= high);
@@ -2554,7 +2559,7 @@ int BinarySearch(T* array, Name* name, int low, int high, int valid_entries,
   while (low != high) {
     int mid = low + (high - low) / 2;
     Name* mid_name = array->GetSortedKey(mid);
-    uint32_t mid_hash = mid_name->Hash();
+    uint32_t mid_hash = mid_name->hash_field();
 
     if (mid_hash >= hash) {
       high = mid;
@@ -2566,14 +2571,14 @@ int BinarySearch(T* array, Name* name, int low, int high, int valid_entries,
   for (; low <= limit; ++low) {
     int sort_index = array->GetSortedKeyIndex(low);
     Name* entry = array->GetKey(sort_index);
-    uint32_t current_hash = entry->Hash();
+    uint32_t current_hash = entry->hash_field();
     if (current_hash != hash) {
-      if (out_insertion_index != NULL) {
+      if (search_mode == ALL_ENTRIES && out_insertion_index != nullptr) {
         *out_insertion_index = sort_index + (current_hash > hash ? 0 : 1);
       }
       return T::kNotFound;
     }
-    if (entry->Equals(name)) {
+    if (entry == name) {
       if (search_mode == ALL_ENTRIES || sort_index < valid_entries) {
         return sort_index;
       }
@@ -2581,7 +2586,9 @@ int BinarySearch(T* array, Name* name, int low, int high, int valid_entries,
     }
   }
 
-  if (out_insertion_index != NULL) *out_insertion_index = limit + 1;
+  if (search_mode == ALL_ENTRIES && out_insertion_index != nullptr) {
+    *out_insertion_index = limit + 1;
+  }
   return T::kNotFound;
 }
 
@@ -2589,29 +2596,28 @@ int BinarySearch(T* array, Name* name, int low, int high, int valid_entries,
 // Perform a linear search in this fixed array. len is the number of entry
 // indices that are valid.
 template <SearchMode search_mode, typename T>
-int LinearSearch(T* array, Name* name, int len, int valid_entries,
+int LinearSearch(T* array, Name* name, int valid_entries,
                  int* out_insertion_index) {
-  uint32_t hash = name->Hash();
-  if (search_mode == ALL_ENTRIES) {
+  if (search_mode == ALL_ENTRIES && out_insertion_index != nullptr) {
+    uint32_t hash = name->hash_field();
+    int len = array->number_of_entries();
     for (int number = 0; number < len; number++) {
       int sorted_index = array->GetSortedKeyIndex(number);
       Name* entry = array->GetKey(sorted_index);
-      uint32_t current_hash = entry->Hash();
+      uint32_t current_hash = entry->hash_field();
       if (current_hash > hash) {
-        if (out_insertion_index != NULL) *out_insertion_index = sorted_index;
+        *out_insertion_index = sorted_index;
         return T::kNotFound;
       }
-      if (current_hash == hash && entry->Equals(name)) return sorted_index;
+      if (entry == name) return sorted_index;
     }
-    if (out_insertion_index != NULL) *out_insertion_index = len;
+    *out_insertion_index = len;
     return T::kNotFound;
   } else {
-    DCHECK(len >= valid_entries);
+    DCHECK_LE(valid_entries, array->number_of_entries());
     DCHECK_NULL(out_insertion_index);  // Not supported here.
     for (int number = 0; number < valid_entries; number++) {
-      Name* entry = array->GetKey(number);
-      uint32_t current_hash = entry->Hash();
-      if (current_hash == hash && entry->Equals(name)) return number;
+      if (array->GetKey(number) == name) return number;
     }
     return T::kNotFound;
   }
@@ -2620,44 +2626,39 @@ int LinearSearch(T* array, Name* name, int len, int valid_entries,
 
 template <SearchMode search_mode, typename T>
 int Search(T* array, Name* name, int valid_entries, int* out_insertion_index) {
-  if (search_mode == VALID_ENTRIES) {
-    SLOW_DCHECK(array->IsSortedNoDuplicates(valid_entries));
-  } else {
-    SLOW_DCHECK(array->IsSortedNoDuplicates());
-  }
+  SLOW_DCHECK(array->IsSortedNoDuplicates());
 
-  int nof = array->number_of_entries();
-  if (nof == 0) {
-    if (out_insertion_index != NULL) *out_insertion_index = 0;
+  if (valid_entries == 0) {
+    if (search_mode == ALL_ENTRIES && out_insertion_index != nullptr) {
+      *out_insertion_index = 0;
+    }
     return T::kNotFound;
   }
 
   // Fast case: do linear search for small arrays.
   const int kMaxElementsForLinearSearch = 8;
-  if ((search_mode == ALL_ENTRIES &&
-       nof <= kMaxElementsForLinearSearch) ||
-      (search_mode == VALID_ENTRIES &&
-       valid_entries <= (kMaxElementsForLinearSearch * 3))) {
-    return LinearSearch<search_mode>(array, name, nof, valid_entries,
+  if (valid_entries <= kMaxElementsForLinearSearch) {
+    return LinearSearch<search_mode>(array, name, valid_entries,
                                      out_insertion_index);
   }
 
   // Slow case: perform binary search.
-  return BinarySearch<search_mode>(array, name, 0, nof - 1, valid_entries,
+  return BinarySearch<search_mode>(array, name, valid_entries,
                                    out_insertion_index);
 }
 
 
 int DescriptorArray::Search(Name* name, int valid_descriptors) {
+  DCHECK(name->IsUniqueName());
   return internal::Search<VALID_ENTRIES>(this, name, valid_descriptors, NULL);
 }
 
-
-int DescriptorArray::SearchWithCache(Name* name, Map* map) {
+int DescriptorArray::SearchWithCache(Isolate* isolate, Name* name, Map* map) {
+  DCHECK(name->IsUniqueName());
   int number_of_own_descriptors = map->NumberOfOwnDescriptors();
   if (number_of_own_descriptors == 0) return kNotFound;
 
-  DescriptorLookupCache* cache = GetIsolate()->descriptor_lookup_cache();
+  DescriptorLookupCache* cache = isolate->descriptor_lookup_cache();
   int number = cache->Lookup(map, name);
 
   if (number == DescriptorLookupCache::kAbsent) {
@@ -2667,7 +2668,6 @@ int DescriptorArray::SearchWithCache(Name* name, Map* map) {
 
   return number;
 }
-
 
 PropertyDetails Map::GetLastDescriptorDetails() {
   return instance_descriptors()->GetDetails(LastAdded());
@@ -3425,12 +3425,6 @@ Handle<String> String::Flatten(Handle<String> string, PretenureFlag pretenure) {
 }
 
 
-Handle<Name> Name::Flatten(Handle<Name> name, PretenureFlag pretenure) {
-  if (name->IsSymbol()) return name;
-  return String::Flatten(Handle<String>::cast(name));
-}
-
-
 uint16_t String::Get(int index) {
   DCHECK(index >= 0 && index < length());
   switch (StringShape(this).full_representation_tag()) {
@@ -3886,6 +3880,14 @@ void BytecodeArray::set_parameter_count(int number_of_parameters) {
                   (number_of_parameters << kPointerSizeLog2));
 }
 
+int BytecodeArray::interrupt_budget() const {
+  return READ_INT_FIELD(this, kInterruptBudgetOffset);
+}
+
+void BytecodeArray::set_interrupt_budget(int interrupt_budget) {
+  DCHECK_GE(interrupt_budget, 0);
+  WRITE_INT_FIELD(this, kInterruptBudgetOffset, interrupt_budget);
+}
 
 int BytecodeArray::parameter_count() const {
   // Parameter count is stored as the size on stack of the parameters to allow
@@ -5508,8 +5510,8 @@ BOOL_ACCESSORS(FunctionTemplateInfo, flag, do_not_cache,
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, instantiated, kInstantiatedBit)
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, accept_any_receiver,
                kAcceptAnyReceiver)
-BOOL_ACCESSORS(SharedFunctionInfo, start_position_and_type, is_expression,
-               kIsExpressionBit)
+BOOL_ACCESSORS(SharedFunctionInfo, start_position_and_type, is_named_expression,
+               kIsNamedExpressionBit)
 BOOL_ACCESSORS(SharedFunctionInfo, start_position_and_type, is_toplevel,
                kIsTopLevelBit)
 
@@ -5531,7 +5533,8 @@ BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, asm_function, kIsAsmFunction)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, deserialized, kDeserialized)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, never_compiled,
                kNeverCompiled)
-
+BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_declaration,
+               kIsDeclaration)
 
 #if V8_HOST_ARCH_32_BIT
 SMI_ACCESSORS(SharedFunctionInfo, length, kLengthOffset)
@@ -5671,7 +5674,8 @@ BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, force_inline, kForceInline)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints,
                name_should_print_as_anonymous,
                kNameShouldPrintAsAnonymous)
-BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_anonymous, kIsAnonymous)
+BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_anonymous_expression,
+               kIsAnonymousExpression)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_function, kIsFunction)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, dont_crankshaft,
                kDontCrankshaft)
@@ -5680,8 +5684,10 @@ BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_arrow, kIsArrow)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_generator, kIsGenerator)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_concise_method,
                kIsConciseMethod)
-BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_accessor_function,
-               kIsAccessorFunction)
+BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_getter_function,
+               kIsGetterFunction)
+BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_setter_function,
+               kIsSetterFunction)
 BOOL_ACCESSORS(SharedFunctionInfo, compiler_hints, is_default_constructor,
                kIsDefaultConstructor)
 

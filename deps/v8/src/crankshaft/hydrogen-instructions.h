@@ -48,7 +48,6 @@ class LChunkBuilder;
   V(AbnormalExit)                             \
   V(AccessArgumentsAt)                        \
   V(Add)                                      \
-  V(AllocateBlockContext)                     \
   V(Allocate)                                 \
   V(ApplyArguments)                           \
   V(ArgumentsElements)                        \
@@ -64,7 +63,6 @@ class LChunkBuilder;
   V(CallFunction)                             \
   V(CallNewArray)                             \
   V(CallRuntime)                              \
-  V(CallStub)                                 \
   V(CapturedObject)                           \
   V(Change)                                   \
   V(CheckArrayBufferNotNeutered)              \
@@ -5235,27 +5233,6 @@ class HParameter final : public HTemplateInstruction<0> {
 };
 
 
-class HCallStub final : public HUnaryCall {
- public:
-  DECLARE_INSTRUCTION_WITH_CONTEXT_FACTORY_P2(HCallStub, CodeStub::Major, int);
-  CodeStub::Major major_key() { return major_key_; }
-
-  HValue* context() { return value(); }
-
-  std::ostream& PrintDataTo(std::ostream& os) const override;  // NOLINT
-
-  DECLARE_CONCRETE_INSTRUCTION(CallStub)
-
- private:
-  HCallStub(HValue* context, CodeStub::Major major_key, int argument_count)
-      : HUnaryCall(context, argument_count),
-        major_key_(major_key) {
-  }
-
-  CodeStub::Major major_key_;
-};
-
-
 class HUnknownOSRValue final : public HTemplateInstruction<0> {
  public:
   DECLARE_INSTRUCTION_FACTORY_P2(HUnknownOSRValue, HEnvironment*, int);
@@ -7687,36 +7664,6 @@ class HStoreFrameContext: public HUnaryOperation {
     set_representation(Representation::Tagged());
     SetChangesFlag(kContextSlots);
   }
-};
-
-
-class HAllocateBlockContext: public HTemplateInstruction<2> {
- public:
-  DECLARE_INSTRUCTION_FACTORY_P3(HAllocateBlockContext, HValue*,
-                                 HValue*, Handle<ScopeInfo>);
-  HValue* context() const { return OperandAt(0); }
-  HValue* function() const { return OperandAt(1); }
-  Handle<ScopeInfo> scope_info() const { return scope_info_; }
-
-  Representation RequiredInputRepresentation(int index) override {
-    return Representation::Tagged();
-  }
-
-  std::ostream& PrintDataTo(std::ostream& os) const override;  // NOLINT
-
-  DECLARE_CONCRETE_INSTRUCTION(AllocateBlockContext)
-
- private:
-  HAllocateBlockContext(HValue* context,
-                        HValue* function,
-                        Handle<ScopeInfo> scope_info)
-      : scope_info_(scope_info) {
-    SetOperandAt(0, context);
-    SetOperandAt(1, function);
-    set_representation(Representation::Tagged());
-  }
-
-  Handle<ScopeInfo> scope_info_;
 };
 
 

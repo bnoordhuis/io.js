@@ -84,7 +84,8 @@ class InterpreterAssembler : public compiler::CodeStubAssembler {
   // arguments (not including receiver) and the first argument
   // located at |first_arg|.
   compiler::Node* CallJS(compiler::Node* function, compiler::Node* context,
-                         compiler::Node* first_arg, compiler::Node* arg_count);
+                         compiler::Node* first_arg, compiler::Node* arg_count,
+                         TailCallMode tail_call_mode);
 
   // Call constructor |constructor| with |arg_count| arguments (not
   // including receiver) and the first argument located at
@@ -154,6 +155,10 @@ class InterpreterAssembler : public compiler::CodeStubAssembler {
 
   // Traces the current bytecode by calling |function_id|.
   void TraceBytecode(Runtime::FunctionId function_id);
+
+  // Updates the bytecode array's interrupt budget by |weight| and calls
+  // Runtime::kInterrupt if counter reaches zero.
+  void UpdateInterruptBudget(compiler::Node* weight);
 
   // Returns the offset of register |index| relative to RegisterFilePointer().
   compiler::Node* RegisterFrameOffset(compiler::Node* index);

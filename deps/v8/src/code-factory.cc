@@ -270,6 +270,13 @@ Callable CodeFactory::FastNewClosure(Isolate* isolate,
 
 
 // static
+Callable CodeFactory::FastNewObject(Isolate* isolate) {
+  FastNewObjectStub stub(isolate);
+  return Callable(stub.GetCode(), stub.GetCallInterfaceDescriptor());
+}
+
+
+// static
 Callable CodeFactory::FastNewRestParameter(Isolate* isolate) {
   FastNewRestParameterStub stub(isolate);
   return Callable(stub.GetCode(), stub.GetCallInterfaceDescriptor());
@@ -347,9 +354,11 @@ Callable CodeFactory::ConstructFunction(Isolate* isolate) {
 
 
 // static
-Callable CodeFactory::InterpreterPushArgsAndCall(Isolate* isolate) {
-  return Callable(isolate->builtins()->InterpreterPushArgsAndCall(),
-                  InterpreterPushArgsAndCallDescriptor(isolate));
+Callable CodeFactory::InterpreterPushArgsAndCall(Isolate* isolate,
+                                                 TailCallMode tail_call_mode) {
+  return Callable(
+      isolate->builtins()->InterpreterPushArgsAndCall(tail_call_mode),
+      InterpreterPushArgsAndCallDescriptor(isolate));
 }
 
 

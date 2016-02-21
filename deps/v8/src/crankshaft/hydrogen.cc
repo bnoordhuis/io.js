@@ -4735,8 +4735,11 @@ void HOptimizedGraphBuilder::VisitBlock(Block* stmt) {
         }
         AddInstruction(function);
         // Allocate a block context and store it to the stack frame.
-        HInstruction* inner_context = Add<HAllocateBlockContext>(
-            outer_context, function, scope->GetScopeInfo(isolate()));
+        HValue* scope_info = Add<HConstant>(scope->GetScopeInfo(isolate()));
+        Add<HPushArguments>(scope_info, function);
+        HInstruction* inner_context = Add<HCallRuntime>(
+            Runtime::FunctionForId(Runtime::kPushBlockContext), 2);
+        inner_context->SetFlag(HValue::kHasNoObservableSideEffects);
         HInstruction* instr = Add<HStoreFrameContext>(inner_context);
         set_scope(scope);
         environment()->BindContext(inner_context);
@@ -8780,7 +8783,8 @@ bool HOptimizedGraphBuilder::IsReadOnlyLengthDescriptor(
   Isolate* isolate = jsarray_map->GetIsolate();
   Handle<Name> length_string = isolate->factory()->length_string();
   DescriptorArray* descriptors = jsarray_map->instance_descriptors();
-  int number = descriptors->SearchWithCache(*length_string, *jsarray_map);
+  int number =
+      descriptors->SearchWithCache(isolate, *length_string, *jsarray_map);
   DCHECK_NE(DescriptorArray::kNotFound, number);
   return descriptors->GetDetails(number).IsReadOnly();
 }
@@ -10193,31 +10197,6 @@ void HGraphBuilder::BuildArrayBufferViewInitialization(
       byte_length);
   Add<HStoreNamedField>(obj, HObjectAccess::ForJSArrayBufferViewBuffer(),
                         buffer);
-}
-
-
-void HOptimizedGraphBuilder::GenerateDataViewInitialize(
-    CallRuntime* expr) {
-  ZoneList<Expression*>* arguments = expr->arguments();
-
-  DCHECK(arguments->length()== 4);
-  CHECK_ALIVE(VisitForValue(arguments->at(0)));
-  HValue* obj = Pop();
-
-  CHECK_ALIVE(VisitForValue(arguments->at(1)));
-  HValue* buffer = Pop();
-
-  CHECK_ALIVE(VisitForValue(arguments->at(2)));
-  HValue* byte_offset = Pop();
-
-  CHECK_ALIVE(VisitForValue(arguments->at(3)));
-  HValue* byte_length = Pop();
-
-  {
-    NoObservableSideEffectsScope scope(this);
-    BuildArrayBufferViewInitialization<JSDataView>(
-        obj, buffer, byte_offset, byte_length);
-  }
 }
 
 
@@ -12215,8 +12194,8 @@ void HOptimizedGraphBuilder::VisitExportDeclaration(
 }
 
 
-void HOptimizedGraphBuilder::VisitRewritableAssignmentExpression(
-    RewritableAssignmentExpression* node) {
+void HOptimizedGraphBuilder::VisitRewritableExpression(
+    RewritableExpression* node) {
   CHECK_ALIVE(Visit(node->expression()));
 }
 
@@ -12542,7 +12521,13 @@ void HOptimizedGraphBuilder::GenerateSubString(CallRuntime* call) {
   DCHECK_EQ(3, call->arguments()->length());
   CHECK_ALIVE(VisitExpressions(call->arguments()));
   PushArgumentsFromEnvironment(call->arguments()->length());
-  HCallStub* result = New<HCallStub>(CodeStub::SubString, 3);
+  Callable callable = CodeFactory::SubString(isolate());
+  HValue* stub = Add<HConstant>(callable.code());
+  HValue* values[] = {context()};
+  HInstruction* result = New<HCallWithDescriptor>(
+      stub, call->arguments()->length(), callable.descriptor(),
+      Vector<HValue*>(values, arraysize(values)));
+  result->set_type(HType::String());
   return ast_context()->ReturnInstruction(result, call->id());
 }
 
@@ -12552,7 +12537,12 @@ void HOptimizedGraphBuilder::GenerateRegExpExec(CallRuntime* call) {
   DCHECK_EQ(4, call->arguments()->length());
   CHECK_ALIVE(VisitExpressions(call->arguments()));
   PushArgumentsFromEnvironment(call->arguments()->length());
-  HCallStub* result = New<HCallStub>(CodeStub::RegExpExec, 4);
+  Callable callable = CodeFactory::RegExpExec(isolate());
+  HValue* stub = Add<HConstant>(callable.code());
+  HValue* values[] = {context()};
+  HInstruction* result = New<HCallWithDescriptor>(
+      stub, call->arguments()->length(), callable.descriptor(),
+      Vector<HValue*>(values, arraysize(values)));
   return ast_context()->ReturnInstruction(result, call->id());
 }
 
@@ -12882,16 +12872,6 @@ void HOptimizedGraphBuilder::GenerateGetCachedArrayIndex(CallRuntime* call) {
   HValue* value = Pop();
   HGetCachedArrayIndex* result = New<HGetCachedArrayIndex>(value);
   return ast_context()->ReturnInstruction(result, call->id());
-}
-
-
-void HOptimizedGraphBuilder::GenerateFastOneByteArrayJoin(CallRuntime* call) {
-  // Simply returning undefined here would be semantically correct and even
-  // avoid the bailout. Nevertheless, some ancient benchmarks like SunSpider's
-  // string-fasta would tank, because fullcode contains an optimized version.
-  // Obviously the fullcode => Crankshaft => bailout => fullcode dance is
-  // faster... *sigh*
-  return Bailout(kInlinedRuntimeFunctionFastOneByteArrayJoin);
 }
 
 

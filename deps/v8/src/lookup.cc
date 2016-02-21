@@ -239,7 +239,6 @@ void LookupIterator::PrepareTransitionToDataProperty(
     state_ = TRANSITION;
     if (map->IsJSGlobalObjectMap()) {
       // Install a property cell.
-      InternalizeName();
       auto cell = JSGlobalObject::EnsurePropertyCell(
           Handle<JSGlobalObject>::cast(receiver), name());
       DCHECK(cell->value()->IsTheHole());
@@ -518,25 +517,22 @@ void LookupIterator::WriteDataValue(Handle<Object> value) {
     Handle<JSObject> object = Handle<JSObject>::cast(holder);
     ElementsAccessor* accessor = object->GetElementsAccessor();
     accessor->Set(object, number_, *value);
+  } else if (holder->HasFastProperties()) {
+    if (property_details_.type() == v8::internal::DATA) {
+      JSObject::cast(*holder)->WriteToField(descriptor_number(),
+                                            property_details_, *value);
+    } else {
+      DCHECK_EQ(v8::internal::DATA_CONSTANT, property_details_.type());
+    }
   } else if (holder->IsJSGlobalObject()) {
     Handle<GlobalDictionary> property_dictionary =
         handle(JSObject::cast(*holder)->global_dictionary());
     PropertyCell::UpdateCell(property_dictionary, dictionary_entry(), value,
                              property_details_);
-  } else if (!holder->HasFastProperties()) {
+  } else {
     NameDictionary* property_dictionary = holder->property_dictionary();
     property_dictionary->ValueAtPut(dictionary_entry(), *value);
-  } else if (property_details_.type() == v8::internal::DATA) {
-    JSObject::cast(*holder)->WriteToField(descriptor_number(), *value);
-  } else {
-    DCHECK_EQ(v8::internal::DATA_CONSTANT, property_details_.type());
   }
-}
-
-
-void LookupIterator::InternalizeName() {
-  if (name_->IsUniqueName()) return;
-  name_ = factory()->InternalizeString(Handle<String>::cast(name_));
 }
 
 
@@ -603,20 +599,16 @@ LookupIterator::State LookupIterator::LookupInHolder(Map* const map,
   switch (state_) {
     case NOT_FOUND:
       if (map->IsJSProxyMap()) {
-        // Do not leak private property names.
         if (IsElement() || !name_->IsPrivate()) return JSPROXY;
       }
-      if (map->is_access_check_needed() &&
-          (IsElement() || !isolate_->IsInternallyUsedPropertyName(name_))) {
-        return ACCESS_CHECK;
+      if (map->is_access_check_needed()) {
+        if (IsElement() || !name_->IsPrivate()) return ACCESS_CHECK;
       }
     // Fall through.
     case ACCESS_CHECK:
       if (check_interceptor() && HasInterceptor(map) &&
           !SkipInterceptor(JSObject::cast(holder))) {
-        // Do not leak private property names.
-        if (!name_.is_null() && name_->IsPrivate()) return NOT_FOUND;
-        return INTERCEPTOR;
+        if (IsElement() || !name_->IsPrivate()) return INTERCEPTOR;
       }
     // Fall through.
     case INTERCEPTOR:
@@ -631,7 +623,7 @@ LookupIterator::State LookupIterator::LookupInHolder(Map* const map,
         property_details_ = accessor->GetDetails(js_object, number_);
       } else if (!map->is_dictionary_map()) {
         DescriptorArray* descriptors = map->instance_descriptors();
-        int number = descriptors->SearchWithCache(*name_, map);
+        int number = descriptors->SearchWithCache(isolate_, *name_, map);
         if (number == DescriptorArray::kNotFound) return NotFound(holder);
         number_ = static_cast<uint32_t>(number);
         property_details_ = descriptors->GetDetails(number_);

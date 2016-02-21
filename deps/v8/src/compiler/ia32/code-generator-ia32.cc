@@ -9,6 +9,7 @@
 #include "src/compiler/gap-resolver.h"
 #include "src/compiler/node-matchers.h"
 #include "src/compiler/osr.h"
+#include "src/frames.h"
 #include "src/ia32/assembler-ia32.h"
 #include "src/ia32/frames-ia32.h"
 #include "src/ia32/macro-assembler-ia32.h"
@@ -56,7 +57,7 @@ class IA32OperandConverter : public InstructionOperandConverter {
 
   Operand ToMaterializableOperand(int materializable_offset) {
     FrameOffset offset = frame_access_state()->GetFrameOffset(
-        Frame::FPOffsetToSlot(materializable_offset));
+        FPOffsetToFrameSlot(materializable_offset));
     return Operand(offset.from_stack_pointer() ? esp : ebp, offset.offset());
   }
 
@@ -241,11 +242,9 @@ class OutOfLineRecordWrite final : public OutOfLineCode {
     if (mode_ > RecordWriteMode::kValueIsPointer) {
       __ JumpIfSmi(value_, exit());
     }
-    if (mode_ > RecordWriteMode::kValueIsMap) {
-      __ CheckPageFlag(value_, scratch0_,
-                       MemoryChunk::kPointersToHereAreInterestingMask, zero,
-                       exit());
-    }
+    __ CheckPageFlag(value_, scratch0_,
+                     MemoryChunk::kPointersToHereAreInterestingMask, zero,
+                     exit());
     SaveFPRegsMode const save_fp_mode =
         frame()->DidAllocateDoubleRegisters() ? kSaveFPRegs : kDontSaveFPRegs;
     RecordWriteStub stub(isolate(), object_, scratch0_, scratch1_,

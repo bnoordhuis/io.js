@@ -37,7 +37,6 @@ namespace internal {
   V(Oddball, true_value, TrueValue)                                            \
   V(Oddball, false_value, FalseValue)                                          \
   V(String, empty_string, empty_string)                                        \
-  V(String, hidden_string, hidden_string)                                      \
   V(Oddball, uninitialized_value, UninitializedValue)                          \
   V(Map, cell_map, CellMap)                                                    \
   V(Map, global_property_cell_map, GlobalPropertyCellMap)                      \
@@ -1060,6 +1059,7 @@ class Heap {
   }
 
   void ClearRecordedSlot(HeapObject* object, Object** slot);
+  void ClearRecordedSlotRange(HeapObject* object, Object** start, Object** end);
 
   // ===========================================================================
   // Incremental marking API. ==================================================
@@ -2480,16 +2480,7 @@ class DescriptorLookupCache {
     }
   }
 
-  static int Hash(Object* source, Name* name) {
-    // Uses only lower 32 bits if pointers are larger.
-    uint32_t source_hash =
-        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(source)) >>
-        kPointerSizeLog2;
-    uint32_t name_hash =
-        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(name)) >>
-        kPointerSizeLog2;
-    return (source_hash ^ name_hash) % kLength;
-  }
+  static inline int Hash(Object* source, Name* name);
 
   static const int kLength = 64;
   struct Key {

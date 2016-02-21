@@ -480,8 +480,7 @@ AstGraphBuilder::AstGraphBuilder(Zone* local_zone, CompilationInfo* info,
                          local_zone),
       frame_state_function_info_(common()->CreateFrameStateFunctionInfo(
           FrameStateType::kJavaScriptFunction, info->num_parameters() + 1,
-          info->scope()->num_stack_slots(), info->shared_info(),
-          CALL_MAINTAINS_NATIVE_CONTEXT)) {
+          info->scope()->num_stack_slots(), info->shared_info())) {
   InitializeAstVisitor(info->isolate());
 }
 
@@ -2483,9 +2482,8 @@ void AstGraphBuilder::VisitCall(Call* expr) {
 
   // Create node to perform the function call.
   VectorSlotPair feedback = CreateVectorSlotPair(expr->CallFeedbackICSlot());
-  const Operator* call =
-      javascript()->CallFunction(args->length() + 2, language_mode(), feedback,
-                                 receiver_hint, expr->tail_call_mode());
+  const Operator* call = javascript()->CallFunction(
+      args->length() + 2, feedback, receiver_hint, expr->tail_call_mode());
   FrameStateBeforeAndAfter states(this, expr->CallId());
   Node* value = ProcessArguments(call, args->length() + 2);
   environment()->Push(value->InputAt(0));  // The callee passed to the call.
@@ -2563,8 +2561,7 @@ void AstGraphBuilder::VisitCallJSRuntime(CallRuntime* expr) {
   VisitForValues(args);
 
   // Create node to perform the JS runtime call.
-  const Operator* call =
-      javascript()->CallFunction(args->length() + 2, language_mode());
+  const Operator* call = javascript()->CallFunction(args->length() + 2);
   FrameStateBeforeAndAfter states(this, expr->CallId());
   Node* value = ProcessArguments(call, args->length() + 2);
   states.AddToNode(value, expr->id(), ast_context()->GetStateCombine());
@@ -3065,8 +3062,7 @@ VectorSlotPair AstGraphBuilder::CreateVectorSlotPair(
 }
 
 
-void AstGraphBuilder::VisitRewritableAssignmentExpression(
-    RewritableAssignmentExpression* node) {
+void AstGraphBuilder::VisitRewritableExpression(RewritableExpression* node) {
   Visit(node->expression());
 }
 

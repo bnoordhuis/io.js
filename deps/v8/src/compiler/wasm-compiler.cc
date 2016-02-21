@@ -1484,8 +1484,9 @@ Node* WasmGraphBuilder::BuildWasmCall(wasm::FunctionSig* sig, Node** args) {
   args[params + 1] = *effect_;
   args[params + 2] = *control_;
 
-  const Operator* op = jsgraph()->common()->Call(
-      module_->GetWasmCallDescriptor(jsgraph()->zone(), sig));
+  CallDescriptor* descriptor =
+      module_->GetWasmCallDescriptor(jsgraph()->zone(), sig);
+  const Operator* op = jsgraph()->common()->Call(descriptor);
   Node* call = graph()->NewNode(op, static_cast<int>(count), args);
 
   *effect_ = call;
@@ -1503,6 +1504,15 @@ Node* WasmGraphBuilder::CallDirect(uint32_t index, Node** args) {
   return BuildWasmCall(sig, args);
 }
 
+Node* WasmGraphBuilder::CallImport(uint32_t index, Node** args) {
+  DCHECK_NULL(args[0]);
+
+  // Add code object as constant.
+  args[0] = Constant(module_->GetImportCode(index));
+  wasm::FunctionSig* sig = module_->GetFunctionSignature(index);
+
+  return BuildWasmCall(sig, args);
+}
 
 Node* WasmGraphBuilder::CallIndirect(uint32_t index, Node** args) {
   DCHECK_NOT_NULL(args[0]);
@@ -1909,11 +1919,12 @@ Node* WasmGraphBuilder::String(const char* string) {
 Graph* WasmGraphBuilder::graph() { return jsgraph()->graph(); }
 
 void WasmGraphBuilder::Int64LoweringForTesting() {
-#if !WASM_64
-  Int64Lowering r(jsgraph()->graph(), jsgraph()->machine(), jsgraph()->common(),
-                  jsgraph()->zone());
-  r.ReduceGraph();
-#endif
+  if (kPointerSize == 4) {
+    Int64Lowering r(jsgraph()->graph(), jsgraph()->machine(),
+                    jsgraph()->common(), jsgraph()->zone(),
+                    function_signature_);
+    r.LowerGraph();
+  }
 }
 
 static void RecordFunctionCompilation(Logger::LogEventsAndTags tag,
@@ -2005,9 +2016,29 @@ Handle<JSFunction> CompileJSToWasmWrapper(
         &zone, false, params + 1, CallDescriptor::kNoFlags);
     // TODO(titzer): this is technically a WASM wrapper, not a wasm function.
     Code::Flags flags = Code::ComputeFlags(Code::WASM_FUNCTION);
-    CompilationInfo info("js-to-wasm", isolate, &zone, flags);
+    bool debugging =
+#if DEBUG
+        true;
+#else
+        FLAG_print_opt_code || FLAG_trace_turbo || FLAG_trace_turbo_graph;
+#endif
+    const char* func_name = "js-to-wasm";
+
+    static unsigned id = 0;
+    Vector<char> buffer;
+    if (debugging) {
+      buffer = Vector<char>::New(128);
+      SNPrintF(buffer, "js-to-wasm#%d", id);
+      func_name = buffer.start();
+    }
+
+    CompilationInfo info(func_name, isolate, &zone, flags);
     Handle<Code> code =
         Pipeline::GenerateCodeForTesting(&info, incoming, &graph, nullptr);
+    if (debugging) {
+      buffer.Dispose();
+    }
+
     RecordFunctionCompilation(Logger::FUNCTION_TAG, &info, "js-to-wasm", index,
                               module->module->GetName(func->name_offset));
     // Set the JSFunction's machine code.
@@ -2016,12 +2047,9 @@ Handle<JSFunction> CompileJSToWasmWrapper(
   return function;
 }
 
-
 Handle<Code> CompileWasmToJSWrapper(Isolate* isolate, wasm::ModuleEnv* module,
                                     Handle<JSFunction> function,
-                                    uint32_t index) {
-  wasm::WasmFunction* func = &module->module->functions->at(index);
-
+                                    wasm::FunctionSig* sig, const char* name) {
   //----------------------------------------------------------------------------
   // Create the Graph
   //----------------------------------------------------------------------------
@@ -2035,11 +2063,11 @@ Handle<Code> CompileWasmToJSWrapper(Isolate* isolate, wasm::ModuleEnv* module,
   Node* control = nullptr;
   Node* effect = nullptr;
 
-  WasmGraphBuilder builder(&zone, &jsgraph, func->sig);
+  WasmGraphBuilder builder(&zone, &jsgraph, sig);
   builder.set_control_ptr(&control);
   builder.set_effect_ptr(&effect);
   builder.set_module(module);
-  builder.BuildWasmToJSWrapper(function, func->sig);
+  builder.BuildWasmToJSWrapper(function, sig);
 
   Handle<Code> code = Handle<Code>::null();
   {
@@ -2064,14 +2092,32 @@ Handle<Code> CompileWasmToJSWrapper(Isolate* isolate, wasm::ModuleEnv* module,
     }
 
     // Schedule and compile to machine code.
-    CallDescriptor* incoming = module->GetWasmCallDescriptor(&zone, func->sig);
+    CallDescriptor* incoming = module->GetWasmCallDescriptor(&zone, sig);
     // TODO(titzer): this is technically a WASM wrapper, not a wasm function.
     Code::Flags flags = Code::ComputeFlags(Code::WASM_FUNCTION);
-    CompilationInfo info("wasm-to-js", isolate, &zone, flags);
-    code = Pipeline::GenerateCodeForTesting(&info, incoming, &graph, nullptr);
+    bool debugging =
+#if DEBUG
+        true;
+#else
+        FLAG_print_opt_code || FLAG_trace_turbo || FLAG_trace_turbo_graph;
+#endif
+    const char* func_name = "wasm-to-js";
+    static unsigned id = 0;
+    Vector<char> buffer;
+    if (debugging) {
+      buffer = Vector<char>::New(128);
+      SNPrintF(buffer, "wasm-to-js#%d", id);
+      func_name = buffer.start();
+    }
 
-    RecordFunctionCompilation(Logger::FUNCTION_TAG, &info, "wasm-to-js", index,
-                              module->module->GetName(func->name_offset));
+    CompilationInfo info(func_name, isolate, &zone, flags);
+    code = Pipeline::GenerateCodeForTesting(&info, incoming, &graph, nullptr);
+    if (debugging) {
+      buffer.Dispose();
+    }
+
+    RecordFunctionCompilation(Logger::FUNCTION_TAG, &info, "wasm-to-js", 0,
+                              name);
   }
   return code;
 }
@@ -2127,8 +2173,11 @@ Handle<Code> CompileWasmFunction(wasm::ErrorThrower& thrower, Isolate* isolate,
   }
 
   // Run the compiler pipeline to generate machine code.
-  CallDescriptor* descriptor = const_cast<CallDescriptor*>(
-      module_env->GetWasmCallDescriptor(&zone, function.sig));
+  CallDescriptor* descriptor =
+      module_env->GetWasmCallDescriptor(&zone, function.sig);
+  if (kPointerSize == 4) {
+    descriptor = module_env->GetI32WasmCallDescriptor(&zone, descriptor);
+  }
   Code::Flags flags = Code::ComputeFlags(Code::WASM_FUNCTION);
   // add flags here if a meaningful name is helpful for debugging.
   bool debugging =

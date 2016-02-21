@@ -776,7 +776,6 @@ bool HInstruction::CanDeoptimize() {
     case HValue::kBoundsCheckBaseIndexInformation:
     case HValue::kCallFunction:
     case HValue::kCallNewArray:
-    case HValue::kCallStub:
     case HValue::kCapturedObject:
     case HValue::kClassOfTestAndBranch:
     case HValue::kCompareGeneric:
@@ -829,7 +828,6 @@ bool HInstruction::CanDeoptimize() {
       return false;
 
     case HValue::kAdd:
-    case HValue::kAllocateBlockContext:
     case HValue::kApplyArguments:
     case HValue::kBitwise:
     case HValue::kBoundsCheck:
@@ -1101,12 +1099,6 @@ std::ostream& HAccessArgumentsAt::PrintDataTo(
     std::ostream& os) const {  // NOLINT
   return os << NameOf(arguments()) << "[" << NameOf(index()) << "], length "
             << NameOf(length());
-}
-
-
-std::ostream& HAllocateBlockContext::PrintDataTo(
-    std::ostream& os) const {  // NOLINT
-  return os << NameOf(context()) << " " << NameOf(function());
 }
 
 
@@ -1727,12 +1719,6 @@ std::ostream& HCheckInstanceType::PrintDataTo(
     std::ostream& os) const {  // NOLINT
   os << GetCheckName() << " ";
   return HUnaryOperation::PrintDataTo(os);
-}
-
-
-std::ostream& HCallStub::PrintDataTo(std::ostream& os) const {  // NOLINT
-  os << CodeStub::MajorName(major_key_) << " ";
-  return HUnaryCall::PrintDataTo(os);
 }
 
 

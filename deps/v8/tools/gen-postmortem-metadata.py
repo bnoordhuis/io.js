@@ -82,7 +82,7 @@ consts_misc = [
     { 'name': 'OddballTrue',            'value': 'Oddball::kTrue' },
     { 'name': 'OddballTheHole',         'value': 'Oddball::kTheHole' },
     { 'name': 'OddballNull',            'value': 'Oddball::kNull' },
-    { 'name': 'OddballArgumentsMarker', 'value': 'Oddball::kArgumentsMarker' },
+    { 'name': 'OddballArgumentMarker',  'value': 'Oddball::kArgumentMarker' },
     { 'name': 'OddballUndefined',       'value': 'Oddball::kUndefined' },
     { 'name': 'OddballUninitialized',   'value': 'Oddball::kUninitialized' },
     { 'name': 'OddballOther',           'value': 'Oddball::kOther' },

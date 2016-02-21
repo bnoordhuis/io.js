@@ -232,6 +232,9 @@ bool AccessInfoFactory::ComputePropertyAccessInfo(
   // Compute the receiver type.
   Handle<Map> receiver_map = map;
 
+  // Property lookups require the name to be internalized.
+  name = isolate()->factory()->InternalizeName(name);
+
   // We support fast inline cases for certain JSObject getters.
   if (access_mode == AccessMode::kLoad &&
       LookupSpecialFieldAccessor(map, name, access_info)) {
@@ -242,7 +245,7 @@ bool AccessInfoFactory::ComputePropertyAccessInfo(
   do {
     // Lookup the named property on the {map}.
     Handle<DescriptorArray> descriptors(map->instance_descriptors(), isolate());
-    int const number = descriptors->SearchWithCache(*name, *map);
+    int const number = descriptors->SearchWithCache(isolate(), *name, *map);
     if (number != DescriptorArray::kNotFound) {
       PropertyDetails const details = descriptors->GetDetails(number);
       if (access_mode == AccessMode::kStore) {

@@ -2213,7 +2213,6 @@ class HOptimizedGraphBuilder : public HGraphBuilder, public AstVisitor {
   F(MathPow)                           \
   F(HasCachedArrayIndex)               \
   F(GetCachedArrayIndex)               \
-  F(FastOneByteArrayJoin)              \
   F(DebugBreakInOptimizedCode)         \
   F(StringCharCodeAt)                  \
   F(SubString)                         \
@@ -2225,7 +2224,6 @@ class HOptimizedGraphBuilder : public HGraphBuilder, public AstVisitor {
   F(DebugIsActive)                     \
   /* Typed Arrays */                   \
   F(TypedArrayInitialize)              \
-  F(DataViewInitialize)                \
   F(MaxSmi)                            \
   F(TypedArrayMaxSizeInHeap)           \
   F(ArrayBufferViewGetByteLength)      \
@@ -2515,7 +2513,7 @@ class HOptimizedGraphBuilder : public HGraphBuilder, public AstVisitor {
         : builder_(builder),
           access_type_(access_type),
           map_(map),
-          name_(name),
+          name_(isolate()->factory()->InternalizeName(name)),
           field_type_(HType::Tagged()),
           access_(HObjectAccess::ForMap()),
           lookup_type_(NOT_FOUND),
@@ -2633,7 +2631,7 @@ class HOptimizedGraphBuilder : public HGraphBuilder, public AstVisitor {
 
     void LookupDescriptor(Map* map, Name* name) {
       DescriptorArray* descriptors = map->instance_descriptors();
-      int number = descriptors->SearchWithCache(name, map);
+      int number = descriptors->SearchWithCache(isolate(), name, map);
       if (number == DescriptorArray::kNotFound) return NotFound();
       lookup_type_ = DESCRIPTOR_TYPE;
       details_ = descriptors->GetDetails(number);

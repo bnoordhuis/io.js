@@ -51,7 +51,6 @@ namespace internal {
   F(GetCachedArrayIndex, 1, 1)       \
   F(FixedArrayGet, 2, 1)             \
   F(FixedArraySet, 3, 1)             \
-  F(FastOneByteArrayJoin, 2, 1)      \
   F(ArraySpeciesConstructor, 1, 1)
 
 
@@ -247,7 +246,6 @@ namespace internal {
   F(ConvertReceiver, 1, 1)                 \
   F(IsFunction, 1, 1)                      \
   F(FunctionToString, 1, 1)
-
 
 #define FOR_EACH_INTRINSIC_GENERATOR(F) \
   F(CreateJSGeneratorObject, 0, 1)      \
@@ -465,6 +463,8 @@ namespace internal {
   F(ToName, 1, 1)                                    \
   F(Equals, 2, 1)                                    \
   F(StrictEquals, 2, 1)                              \
+  F(SameValue, 2, 1)                                 \
+  F(SameValueZero, 2, 1)                             \
   F(Compare, 3, 1)                                   \
   F(InstanceOf, 2, 1)                                \
   F(HasInPrototypeChain, 2, 1)                       \
@@ -548,8 +548,6 @@ namespace internal {
 
 #define FOR_EACH_INTRINSIC_SIMD(F)     \
   F(IsSimdValue, 1, 1)                 \
-  F(SimdSameValue, 2, 1)               \
-  F(SimdSameValueZero, 2, 1)           \
   F(CreateFloat32x4, 4, 1)             \
   F(CreateInt32x4, 4, 1)               \
   F(CreateUint32x4, 4, 1)              \
@@ -964,7 +962,6 @@ namespace internal {
   F(IsSharedTypedArray, 1, 1)                \
   F(IsSharedIntegerTypedArray, 1, 1)         \
   F(IsSharedInteger32TypedArray, 1, 1)       \
-  F(DataViewInitialize, 4, 1)                \
   F(DataViewGetUint8, 3, 1)                  \
   F(DataViewGetInt8, 3, 1)                   \
   F(DataViewGetUint16, 3, 1)                 \

@@ -71,6 +71,11 @@ inline bool operator&(BuiltinExtraArguments lhs, BuiltinExtraArguments rhs) {
                                                                \
   V(BooleanConstructor, kNone)                                 \
   V(BooleanConstructor_ConstructStub, kTargetAndNewTarget)     \
+  V(BooleanPrototypeToString, kNone)                           \
+  V(BooleanPrototypeValueOf, kNone)                            \
+                                                               \
+  V(DataViewConstructor, kNone)                                \
+  V(DataViewConstructor_ConstructStub, kTargetAndNewTarget)    \
                                                                \
   V(DateConstructor, kNone)                                    \
   V(DateConstructor_ConstructStub, kTargetAndNewTarget)        \
@@ -117,6 +122,7 @@ inline bool operator&(BuiltinExtraArguments lhs, BuiltinExtraArguments rhs) {
   V(ObjectGetOwnPropertyDescriptor, kNone)                     \
   V(ObjectGetOwnPropertyNames, kNone)                          \
   V(ObjectGetOwnPropertySymbols, kNone)                        \
+  V(ObjectIs, kNone)                                           \
   V(ObjectIsExtensible, kNone)                                 \
   V(ObjectIsFrozen, kNone)                                     \
   V(ObjectIsSealed, kNone)                                     \
@@ -211,6 +217,7 @@ inline bool operator&(BuiltinExtraArguments lhs, BuiltinExtraArguments rhs) {
   V(InterpreterEntryTrampoline, BUILTIN, UNINITIALIZED, kNoExtraICState)       \
   V(InterpreterExitTrampoline, BUILTIN, UNINITIALIZED, kNoExtraICState)        \
   V(InterpreterPushArgsAndCall, BUILTIN, UNINITIALIZED, kNoExtraICState)       \
+  V(InterpreterPushArgsAndTailCall, BUILTIN, UNINITIALIZED, kNoExtraICState)   \
   V(InterpreterPushArgsAndConstruct, BUILTIN, UNINITIALIZED, kNoExtraICState)  \
   V(InterpreterNotifyDeoptimized, BUILTIN, UNINITIALIZED, kNoExtraICState)     \
   V(InterpreterNotifySoftDeoptimized, BUILTIN, UNINITIALIZED, kNoExtraICState) \
@@ -359,6 +366,7 @@ class Builtins {
   Handle<Code> Call(ConvertReceiverMode = ConvertReceiverMode::kAny,
                     TailCallMode tail_call_mode = TailCallMode::kDisallow);
   Handle<Code> CallBoundFunction(TailCallMode tail_call_mode);
+  Handle<Code> InterpreterPushArgsAndCall(TailCallMode tail_call_mode);
 
   Code* builtin(Name name) {
     // Code::cast cannot be used here since we access builtins
@@ -574,7 +582,15 @@ class Builtins {
 
   static void Generate_InterpreterEntryTrampoline(MacroAssembler* masm);
   static void Generate_InterpreterExitTrampoline(MacroAssembler* masm);
-  static void Generate_InterpreterPushArgsAndCall(MacroAssembler* masm);
+  static void Generate_InterpreterPushArgsAndCall(MacroAssembler* masm) {
+    return Generate_InterpreterPushArgsAndCallImpl(masm,
+                                                   TailCallMode::kDisallow);
+  }
+  static void Generate_InterpreterPushArgsAndTailCall(MacroAssembler* masm) {
+    return Generate_InterpreterPushArgsAndCallImpl(masm, TailCallMode::kAllow);
+  }
+  static void Generate_InterpreterPushArgsAndCallImpl(
+      MacroAssembler* masm, TailCallMode tail_call_mode);
   static void Generate_InterpreterPushArgsAndConstruct(MacroAssembler* masm);
   static void Generate_InterpreterNotifyDeoptimized(MacroAssembler* masm);
   static void Generate_InterpreterNotifySoftDeoptimized(MacroAssembler* masm);
