@@ -275,6 +275,8 @@ class TapProgressIndicator(SimpleProgressIndicator):
     # hard to decipher what test is running when only the filename is printed.
     prefix = abspath(join(dirname(__file__), '../test')) + '/'
     command = output.command[-1]
+    print '__file__=="%s" dirname(__file__)="%s" prefix="%s" command="%s"' % (
+            __file__, dirname(__file__), prefix, command)
     if command.endswith('.js'): command = command[:-3]
     if command.startswith(prefix): command = command[len(prefix):]
 
