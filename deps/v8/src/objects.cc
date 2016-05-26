@@ -73,6 +73,17 @@ std::ostream& operator<<(std::ostream& os, InstanceType instance_type) {
   return os << "UNKNOWN";  // Keep the compiler happy.
 }
 
+#if TRACE_MAPS
+inline void MaybePrintSFI(Map* map) {
+  auto maybe_constructor = map->GetConstructor();
+  if (!maybe_constructor->IsJSFunction()) return;
+  auto shared = JSFunction::cast(maybe_constructor)->shared();
+  PrintF(" sfi= %d_%s",
+         shared->unique_id(),
+         shared->DebugName()->ToCString().get());
+}
+#endif
+
 Handle<FieldType> Object::OptimalType(Isolate* isolate,
                                       Representation representation) {
   if (representation.IsNone()) return FieldType::None(isolate);
@@ -5640,9 +5651,11 @@ void JSObject::MigrateSlowToFast(Handle<JSObject> object,
 
 #if TRACE_MAPS
   if (FLAG_trace_maps) {
-    PrintF("[TraceMaps: SlowToFast from= %p to= %p reason= %s ]\n",
+    PrintF("[TraceMaps: SlowToFast from= %p to= %p reason= %s",
            reinterpret_cast<void*>(*old_map), reinterpret_cast<void*>(*new_map),
            reason);
+    MaybePrintSFI(*old_map);
+    PrintF(" ]\n");
   }
 #endif
 
@@ -9242,9 +9255,11 @@ Handle<Map> Map::Normalize(Handle<Map> fast_map, PropertyNormalizationMode mode,
     }
 #if TRACE_MAPS
     if (FLAG_trace_maps) {
-      PrintF("[TraceMaps: Normalize from= %p to= %p reason= %s ]\n",
+      PrintF("[TraceMaps: Normalize from= %p to= %p reason= %s",
              reinterpret_cast<void*>(*fast_map),
              reinterpret_cast<void*>(*new_map), reason);
+      MaybePrintSFI(*fast_map);
+      PrintF(" ]\n");
     }
 #endif
   }
@@ -9385,6 +9400,7 @@ void Map::TraceTransition(const char* what, Map* from, Map* to, Name* name) {
     PrintF("[TraceMaps: %s from= %p to= %p name= ", what,
            reinterpret_cast<void*>(from), reinterpret_cast<void*>(to));
     name->NameShortPrint();
+    MaybePrintSFI(from);
     PrintF(" ]\n");
   }
 }
@@ -9467,9 +9483,11 @@ Handle<Map> Map::CopyReplaceDescriptors(
       (map->is_prototype_map() ||
        !(flag == INSERT_TRANSITION &&
          TransitionArray::CanHaveMoreTransitions(map)))) {
-    PrintF("[TraceMaps: ReplaceDescriptors from= %p to= %p reason= %s ]\n",
+    PrintF("[TraceMaps: ReplaceDescriptors from= %p to= %p reason= %s",
            reinterpret_cast<void*>(*map), reinterpret_cast<void*>(*result),
            reason);
+    MaybePrintSFI(*map);
+    PrintF(" ]\n");
   }
 #endif
 
@@ -9694,9 +9712,11 @@ Handle<Map> Map::CopyForTransition(Handle<Map> map, const char* reason) {
 
 #if TRACE_MAPS
   if (FLAG_trace_maps) {
-    PrintF("[TraceMaps: CopyForTransition from= %p to= %p reason= %s ]\n",
+    PrintF("[TraceMaps: CopyForTransition from= %p to= %p reason= %s",
            reinterpret_cast<void*>(*map), reinterpret_cast<void*>(*new_map),
            reason);
+    MaybePrintSFI(*map);
+    PrintF(" ]\n");
   }
 #endif
 
@@ -13025,9 +13045,9 @@ void JSFunction::SetInitialMap(Handle<JSFunction> function, Handle<Map> map,
   map->SetConstructor(*function);
 #if TRACE_MAPS
   if (FLAG_trace_maps) {
-    PrintF("[TraceMaps: InitialMap map= %p SFI= %d_%s ]\n",
-           reinterpret_cast<void*>(*map), function->shared()->unique_id(),
-           function->shared()->DebugName()->ToCString().get());
+    PrintF("[TraceMaps: InitialMap map= %p", reinterpret_cast<void*>(*map));
+    MaybePrintSFI(*map);
+    PrintF(" ]\n");
   }
 #endif
 }
