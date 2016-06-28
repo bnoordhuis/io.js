@@ -236,16 +236,23 @@ namespace node {
   V(buffer_constructor_function, v8::Function)                                \
   V(buffer_prototype_object, v8::Object)                                      \
   V(context, v8::Context)                                                     \
+  V(context_constructor_template, v8::FunctionTemplate)                       \
   V(domain_array, v8::Array)                                                  \
   V(domains_stack_array, v8::Array)                                           \
+  V(environment_constructor_template, v8::FunctionTemplate)                   \
+  V(event_loop_constructor_template, v8::FunctionTemplate)                    \
   V(fs_stats_constructor_function, v8::Function)                              \
   V(generic_internal_field_template, v8::ObjectTemplate)                      \
+  V(isolate_constructor_template, v8::FunctionTemplate)                       \
+  V(isolate_data_constructor_template, v8::FunctionTemplate)                  \
+  V(joinable_thread_constructor_template, v8::FunctionTemplate)               \
   V(jsstream_constructor_template, v8::FunctionTemplate)                      \
   V(module_load_list_array, v8::Array)                                        \
   V(pipe_constructor_template, v8::FunctionTemplate)                          \
   V(process_object, v8::Object)                                               \
   V(promise_reject_function, v8::Function)                                    \
   V(push_values_to_array_function, v8::Function)                              \
+  V(script_constructor_template, v8::FunctionTemplate)                        \
   V(script_context_constructor_template, v8::FunctionTemplate)                \
   V(script_data_constructor_function, v8::Function)                           \
   V(secure_context_constructor_template, v8::FunctionTemplate)                \
@@ -255,6 +262,7 @@ namespace node {
   V(tls_wrap_constructor_template, v8::FunctionTemplate)                      \
   V(tty_constructor_template, v8::FunctionTemplate)                           \
   V(udp_constructor_function, v8::Function)                                   \
+  V(unbound_script_constructor_template, v8::FunctionTemplate)                \
   V(write_wrap_constructor_function, v8::Function)                            \
 
 class Environment;
