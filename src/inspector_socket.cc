@@ -87,7 +87,6 @@ static void dispose_inspector(uv_handle_t* handle) {
 static void close_connection(inspector_socket_t* inspector) {
   uv_handle_t* socket = reinterpret_cast<uv_handle_t*>(&inspector->client);
   if (!uv_is_closing(socket)) {
-    uv_read_stop(reinterpret_cast<uv_stream_t*>(socket));
     uv_close(socket, dispose_inspector);
   }
 }
@@ -506,7 +505,6 @@ static void close_and_report_handshake_failure(inspector_socket_t* inspector) {
   if (uv_is_closing(socket)) {
     report_handshake_failure_cb(socket);
   } else {
-    uv_read_stop(reinterpret_cast<uv_stream_t*>(socket));
     uv_close(socket, report_handshake_failure_cb);
   }
 }
