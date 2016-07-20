@@ -13,12 +13,11 @@
 #include <string.h>
 #include <limits.h>
 
+#include <algorithm>
 #include <new>
 #include <utility>
 
 #define BUFFER_ID 0xB0E4
-
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define CHECK_NOT_OOB(r)                                                    \
   do {                                                                      \
@@ -364,15 +363,13 @@ MaybeLocal<Object> Copy(Environment* env, const char* data, size_t length) {
     return Local<Object>();
   }
 
-  void* new_data;
+  char* new_data = nullptr;
   if (length > 0) {
     CHECK_NE(data, nullptr);
-    new_data = malloc(length);
+    new_data = static_cast<char*>(malloc(length));
     if (new_data == nullptr)
       return Local<Object>();
-    memcpy(new_data, data, length);
-  } else {
-    new_data = nullptr;
+    std::copy(data, &data[length], new_data);
   }
 
   Local<ArrayBuffer> ab =
@@ -602,9 +599,9 @@ void Copy(const FunctionCallbackInfo<Value> &args) {
   if (source_end - source_start > target_length - target_start)
     source_end = source_start + target_length - target_start;
 
-  uint32_t to_copy = MIN(MIN(source_end - source_start,
-                             target_length - target_start),
-                             ts_obj_length - source_start);
+  uint32_t to_copy = std::min(std::min(source_end - source_start,
+                                       target_length - target_start),
+                              ts_obj_length - source_start);
 
   memmove(target_data + target_start, ts_obj_data + source_start, to_copy);
   args.GetReturnValue().Set(to_copy);
@@ -629,7 +626,8 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   if (Buffer::HasInstance(args[1])) {
     SPREAD_ARG(args[1], fill_obj);
     str_length = fill_obj_length;
-    memcpy(ts_obj_data + start, fill_obj_data, MIN(str_length, fill_length));
+    const size_t size = std::min(str_length, fill_length);
+    std::copy(fill_obj_data, &fill_obj_data[size], &ts_obj_data[start]);
     goto start_fill;
   }
 
@@ -656,11 +654,15 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   // to write a two byte character into a one byte Buffer.
   if (enc == UTF8) {
     node::Utf8Value str(env->isolate(), args[1]);
-    memcpy(ts_obj_data + start, *str, MIN(str_length, fill_length));
+    const size_t size = std::min(str_length, fill_length);
+    std::copy(*str, &(*str)[size], &ts_obj_data[start]);
 
   } else if (enc == UCS2) {
     node::TwoByteValue str(env->isolate(), args[1]);
-    memcpy(ts_obj_data + start, *str, MIN(str_length, fill_length));
+    const size_t size = std::min(str_length, fill_length);
+    std::copy(reinterpret_cast<const char*>(*str),
+              reinterpret_cast<const char*>(*str) + size,
+              &ts_obj_data[start]);
 
   } else {
     // Write initial String to Buffer, then use that memory to copy remainder
@@ -685,18 +687,21 @@ void Fill(const FunctionCallbackInfo<Value>& args) {
   if (str_length >= fill_length)
     return;
 
-
   size_t in_there = str_length;
   char* ptr = ts_obj_data + start + str_length;
 
   while (in_there < fill_length - in_there) {
-    memcpy(ptr, ts_obj_data + start, in_there);
+    const char* const src = ts_obj_data + start;
+    const size_t size = fill_length - in_there;
+    std::copy(src, &src[size], ptr);
     ptr += in_there;
     in_there *= 2;
   }
 
   if (in_there < fill_length) {
-    memcpy(ptr, ts_obj_data + start, fill_length - in_there);
+    const char* const src = ts_obj_data + start;
+    const size_t size = fill_length - in_there;
+    std::copy(src, &src[size], ptr);
   }
 }
 
@@ -725,7 +730,7 @@ void StringWrite(const FunctionCallbackInfo<Value>& args) {
 
   CHECK_NOT_OOB(ParseArrayIndex(args[2], ts_obj_length - offset, &max_length));
 
-  max_length = MIN(ts_obj_length - offset, max_length);
+  max_length = std::min(ts_obj_length - offset, max_length);
 
   if (max_length == 0)
     return args.GetReturnValue().Set(0);
@@ -795,7 +800,7 @@ void ReadFloatGeneric(const FunctionCallbackInfo<Value>& args) {
 
   union NoAlias na;
   const char* ptr = static_cast<const char*>(ts_obj_data) + offset;
-  memcpy(na.bytes, ptr, sizeof(na.bytes));
+  std::copy(ptr, ptr + sizeof(na.bytes), na.bytes);
   if (endianness != GetEndianness())
     Swizzle(na.bytes, sizeof(na.bytes));
 
@@ -864,7 +869,7 @@ void WriteFloatGeneric(const FunctionCallbackInfo<Value>& args) {
   char* ptr = static_cast<char*>(ts_obj_data) + offset;
   if (endianness != GetEndianness())
     Swizzle(na.bytes, sizeof(na.bytes));
-  memcpy(ptr, na.bytes, memcpy_num);
+  std::copy(na.bytes, &na.bytes[memcpy_num], ptr);
 }
 
 
@@ -938,9 +943,9 @@ void CompareOffset(const FunctionCallbackInfo<Value> &args) {
   CHECK_LE(source_start, source_end);
   CHECK_LE(target_start, target_end);
 
-  size_t to_cmp = MIN(MIN(source_end - source_start,
-                      target_end - target_start),
-                      ts_obj_length - source_start);
+  size_t to_cmp = std::min(std::min(source_end - source_start,
+                                    target_end - target_start),
+                           ts_obj_length - source_start);
 
   int val = normalizeCompareVal(to_cmp > 0 ?
                                   memcmp(ts_obj_data + source_start,
@@ -960,7 +965,7 @@ void Compare(const FunctionCallbackInfo<Value> &args) {
   SPREAD_ARG(args[0], obj_a);
   SPREAD_ARG(args[1], obj_b);
 
-  size_t cmp_length = MIN(obj_a_length, obj_b_length);
+  size_t cmp_length = std::min(obj_a_length, obj_b_length);
 
   int val = normalizeCompareVal(cmp_length > 0 ?
                                 memcmp(obj_a_data, obj_b_data, cmp_length) : 0,

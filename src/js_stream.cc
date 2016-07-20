@@ -8,7 +8,7 @@
 #include "stream_base-inl.h"
 #include "v8.h"
 
-#include <string.h>
+#include <algorithm>
 
 namespace node {
 
@@ -198,7 +198,7 @@ void JSStream::ReadBuffer(const FunctionCallbackInfo<Value>& args) {
     if (static_cast<ssize_t>(buf.len) < avail)
       avail = buf.len;
 
-    memcpy(buf.base, data, avail);
+    std::copy(&data[0], &data[avail], buf.base);
     data += avail;
     len -= avail;
     wrap->OnRead(avail, &buf);

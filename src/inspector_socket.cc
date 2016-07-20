@@ -8,6 +8,8 @@
 #include "openssl/sha.h"  // Sha-1 hash
 
 #include <string.h>
+
+#include <algorithm>
 #include <vector>
 
 #define ACCEPT_KEY_LENGTH base64_encoded_size(20)
@@ -301,7 +303,7 @@ static int parse_ws_frames(inspector_socket_t* inspector, size_t len) {
         reinterpret_cast<uv_handle_t*>(&inspector->client),
         len, &buffer);
     CHECK_GE(buffer.len, len);
-    memcpy(buffer.base, &output[0], len);
+    std::copy(&output[0], &output[len], buffer.base);
     invoke_read_callback(inspector, len, &buffer);
   }
   return bytes_consumed;
