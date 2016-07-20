@@ -1875,25 +1875,17 @@ static uid_t uid_by_name(const char* name) {
 }
 
 
-static char* name_by_uid(uid_t uid) {
+static bool name_by_uid(uid_t uid, std::string* user) {
   struct passwd pwd;
   struct passwd* pp;
   char buf[8192];
-  int rc;
 
-  errno = 0;
   pp = nullptr;
+  if (getpwuid_r(uid, &pwd, buf, sizeof(buf), &pp) || pp == nullptr)
+    return false;
 
-  if ((rc = getpwuid_r(uid, &pwd, buf, sizeof(buf), &pp)) == 0 &&
-      pp != nullptr) {
-    return strdup(pp->pw_name);
-  }
-
-  if (rc == 0) {
-    errno = ENOENT;
-  }
-
-  return nullptr;
+  *user = pp->pw_name;
+  return true;
 }
 
 
@@ -1911,30 +1903,6 @@ static gid_t gid_by_name(const char* name) {
 
   return gid_not_found;
 }
-
-
-#if 0  // For future use.
-static const char* name_by_gid(gid_t gid) {
-  struct group pwd;
-  struct group* pp;
-  char buf[8192];
-  int rc;
-
-  errno = 0;
-  pp = nullptr;
-
-  if ((rc = getgrgid_r(gid, &pwd, buf, sizeof(buf), &pp)) == 0 &&
-      pp != nullptr) {
-    return strdup(pp->gr_name);
-  }
-
-  if (rc == 0) {
-    errno = ENOENT;
-  }
-
-  return nullptr;
-}
-#endif
 
 
 static uid_t uid_by_name(Isolate* isolate, Local<Value> value) {
@@ -2138,36 +2106,22 @@ static void InitGroups(const FunctionCallbackInfo<Value>& args) {
 
   node::Utf8Value arg0(env->isolate(), args[0]);
   gid_t extra_group;
-  bool must_free;
-  char* user;
+  std::string user;
 
   if (args[0]->IsUint32()) {
-    user = name_by_uid(args[0]->Uint32Value());
-    must_free = true;
+    if (!name_by_uid(args[0]->Uint32Value(), &user))
+      return env->ThrowError("initgroups user not found");
   } else {
     user = *arg0;
-    must_free = false;
-  }
-
-  if (user == nullptr) {
-    return env->ThrowError("initgroups user not found");
   }
 
   extra_group = gid_by_name(env->isolate(), args[1]);
 
   if (extra_group == gid_not_found) {
-    if (must_free)
-      free(user);
     return env->ThrowError("initgroups extra group not found");
   }
 
-  int rc = initgroups(user, extra_group);
-
-  if (must_free) {
-    free(user);
-  }
-
-  if (rc) {
+  if (initgroups(user.c_str(), extra_group)) {
     return env->ThrowErrnoException(errno, "initgroups");
   }
 }

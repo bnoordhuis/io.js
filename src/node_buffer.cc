@@ -12,6 +12,8 @@
 
 #include <string.h>
 #include <limits.h>
+
+#include <new>
 #include <utility>
 
 #define BUFFER_ID 0xB0E4
@@ -1087,7 +1089,7 @@ void IndexOfString(const FunctionCallbackInfo<Value>& args) {
                           offset,
                           is_forward);
   } else if (enc == LATIN1) {
-    uint8_t* needle_data = static_cast<uint8_t*>(malloc(needle_length));
+    uint8_t* needle_data = new(std::nothrow) uint8_t[needle_length];
     if (needle_data == nullptr) {
       return args.GetReturnValue().Set(-1);
     }
@@ -1100,7 +1102,7 @@ void IndexOfString(const FunctionCallbackInfo<Value>& args) {
                           needle_length,
                           offset,
                           is_forward);
-    free(needle_data);
+    delete[] needle_data;
   }
 
   args.GetReturnValue().Set(

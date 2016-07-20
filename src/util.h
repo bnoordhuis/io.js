@@ -255,7 +255,7 @@ inline bool StringEqualNoCase(const char* a, const char* b);
 inline bool StringEqualNoCaseN(const char* a, const char* b, size_t length);
 
 // Allocates an array of member type T. For up to kStackStorageSize items,
-// the stack is used, otherwise malloc().
+// the stack is used, otherwise operator new T[].
 template <typename T, size_t kStackStorageSize = 1024>
 class MaybeStackBuffer {
  public:
@@ -297,11 +297,7 @@ class MaybeStackBuffer {
     if (storage <= kStackStorageSize) {
       buf_ = buf_st_;
     } else {
-      // Guard against overflow.
-      CHECK_LE(storage, sizeof(T) * storage);
-
-      buf_ = static_cast<T*>(malloc(sizeof(T) * storage));
-      CHECK_NE(buf_, nullptr);
+      buf_ = new T[storage];
     }
 
     // Remember how much was allocated to check against that in SetLength().

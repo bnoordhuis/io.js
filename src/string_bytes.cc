@@ -6,7 +6,9 @@
 #include "v8.h"
 
 #include <limits.h>
-#include <string.h>  // memcpy
+
+#include <algorithm>
+#include <new>
 #include <vector>
 
 // When creating strings >= this length v8's gc spins up and consumes
@@ -29,7 +31,7 @@ template <typename ResourceType, typename TypeName>
 class ExternString: public ResourceType {
  public:
   ~ExternString() override {
-    free(const_cast<TypeName*>(data_));
+    delete[] data_;
     isolate()->AdjustAmountOfExternalAllocatedMemory(-byte_length());
   }
 
@@ -53,19 +55,18 @@ class ExternString: public ResourceType {
     if (length == 0)
       return scope.Escape(String::Empty(isolate));
 
-    TypeName* new_data =
-        static_cast<TypeName*>(malloc(length * sizeof(*new_data)));
+    TypeName* new_data = new(std::nothrow) TypeName[length];
     if (new_data == nullptr) {
       return Local<String>();
     }
-    memcpy(new_data, data, length * sizeof(*new_data));
+    std::copy(data, data + length, new_data);
 
     return scope.Escape(ExternString<ResourceType, TypeName>::New(isolate,
                                                                   new_data,
                                                                   length));
   }
 
-  // uses "data" for external resource, and will be free'd on gc
+  // uses "data" for external resource, and will be deleted on gc
   static Local<String> New(Isolate* isolate,
                            const TypeName* data,
                            size_t length) {
@@ -624,14 +625,14 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
 
     case ASCII:
       if (contains_non_ascii(buf, buflen)) {
-        char* out = static_cast<char*>(malloc(buflen));
+        char* out = new(std::nothrow) char[buflen];
         if (out == nullptr) {
           return Local<String>();
         }
         force_ascii(buf, out, buflen);
         if (buflen < EXTERN_APEX) {
           val = OneByteString(isolate, out, buflen);
-          free(out);
+          delete[] out;
         } else {
           val = ExternOneByteString::New(isolate, out, buflen);
         }
@@ -659,7 +660,7 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
 
     case BASE64: {
       size_t dlen = base64_encoded_size(buflen);
-      char* dst = static_cast<char*>(malloc(dlen));
+      char* dst = new(std::nothrow) char[dlen];
       if (dst == nullptr) {
         return Local<String>();
       }
@@ -669,7 +670,7 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
 
       if (dlen < EXTERN_APEX) {
         val = OneByteString(isolate, dst, dlen);
-        free(dst);
+        delete[] dst;
       } else {
         val = ExternOneByteString::New(isolate, dst, dlen);
       }
@@ -678,7 +679,7 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
 
     case HEX: {
       size_t dlen = buflen * 2;
-      char* dst = static_cast<char*>(malloc(dlen));
+      char* dst = new(std::nothrow) char[dlen];
       if (dst == nullptr) {
         return Local<String>();
       }
@@ -687,7 +688,7 @@ Local<Value> StringBytes::Encode(Isolate* isolate,
 
       if (dlen < EXTERN_APEX) {
         val = OneByteString(isolate, dst, dlen);
-        free(dst);
+        delete[] dst;
       } else {
         val = ExternOneByteString::New(isolate, dst, dlen);
       }

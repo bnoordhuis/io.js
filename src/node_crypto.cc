@@ -5100,10 +5100,8 @@ class PBKDF2Request : public AsyncWrap {
         saltlen_(saltlen),
         salt_(salt),
         keylen_(keylen),
-        key_(static_cast<char*>(malloc(keylen))),
+        key_(new char[keylen]),
         iter_(iter) {
-    if (key() == nullptr)
-      FatalError("node::PBKDF2Request()", "Out of Memory");
     Wrap(object, this);
   }
 
@@ -5150,15 +5148,15 @@ class PBKDF2Request : public AsyncWrap {
   }
 
   inline void release() {
-    free(pass_);
+    delete[] pass_;
     pass_ = nullptr;
     passlen_ = 0;
 
-    free(salt_);
+    delete[] salt_;
     salt_ = nullptr;
     saltlen_ = 0;
 
-    free(key_);
+    delete[] key_;
     key_ = nullptr;
     keylen_ = 0;
   }
@@ -5263,7 +5261,7 @@ void PBKDF2(const FunctionCallbackInfo<Value>& args) {
 
   THROW_AND_RETURN_IF_NOT_BUFFER(args[1], "Salt");
 
-  pass = static_cast<char*>(malloc(passlen));
+  pass = new char[passlen];
   if (pass == nullptr) {
     FatalError("node::PBKDF2()", "Out of Memory");
   }
@@ -5275,7 +5273,7 @@ void PBKDF2(const FunctionCallbackInfo<Value>& args) {
     goto err;
   }
 
-  salt = static_cast<char*>(malloc(saltlen));
+  salt = new char[saltlen];
   if (salt == nullptr) {
     FatalError("node::PBKDF2()", "Out of Memory");
   }
@@ -5368,9 +5366,7 @@ class RandomBytesRequest : public AsyncWrap {
       : AsyncWrap(env, object, AsyncWrap::PROVIDER_CRYPTO),
         error_(0),
         size_(size),
-        data_(static_cast<char*>(malloc(size))) {
-    if (data() == nullptr)
-      FatalError("node::RandomBytesRequest()", "Out of Memory");
+        data_(new char[size]) {
     Wrap(object, this);
   }
 
@@ -5592,22 +5588,14 @@ void GetCurves(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
   const size_t num_curves = EC_get_builtin_curves(nullptr, 0);
   Local<Array> arr = Array::New(env->isolate(), num_curves);
-  EC_builtin_curve* curves;
-  size_t alloc_size;
 
-  if (num_curves) {
-    alloc_size = sizeof(*curves) * num_curves;
-    curves = static_cast<EC_builtin_curve*>(malloc(alloc_size));
-
-    CHECK_NE(curves, nullptr);
-
-    if (EC_get_builtin_curves(curves, num_curves)) {
-      for (size_t i = 0; i < num_curves; i++) {
+  if (num_curves > 0) {
+    std::vector<EC_builtin_curve> curves(num_curves);
+    if (EC_get_builtin_curves(curves.data(), curves.size())) {
+      for (size_t i = 0; i < curves.size(); i++) {
         arr->Set(i, OneByteString(env->isolate(), OBJ_nid2sn(curves[i].nid)));
       }
     }
-
-    free(curves);
   }
 
   args.GetReturnValue().Set(arr);
