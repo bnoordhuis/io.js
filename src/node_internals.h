@@ -12,6 +12,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <vector>
+
 struct sockaddr;
 
 // Variation on NODE_DEFINE_CONSTANT that sets a String value.
@@ -148,8 +150,7 @@ v8::Local<v8::Value> BuildStatsObject(Environment* env, const uv_stat_t* s);
 void SetupProcessObject(Environment* env,
                         int argc,
                         const char* const* argv,
-                        int exec_argc,
-                        const char* const* exec_argv);
+                        const std::vector<const char*>& exec_argv);
 
 enum Endianness {
   kLittleEndian,  // _Not_ LITTLE_ENDIAN, clashes with endian.h.
@@ -200,15 +201,13 @@ class NodeInstanceData {
                    uv_loop_t* event_loop,
                    int argc,
                    const char** argv,
-                   int exec_argc,
-                   const char** exec_argv,
+                   const std::vector<const char*> exec_argv,
                    bool use_debug_agent_flag)
       : node_instance_type_(node_instance_type),
         exit_code_(1),
         event_loop_(event_loop),
         argc_(argc),
         argv_(argv),
-        exec_argc_(exec_argc),
         exec_argv_(exec_argv),
         use_debug_agent_flag_(use_debug_agent_flag) {
     CHECK_NE(event_loop_, nullptr);
@@ -248,11 +247,7 @@ class NodeInstanceData {
     return argv_;
   }
 
-  int exec_argc() {
-    return exec_argc_;
-  }
-
-  const char** exec_argv() {
+  const std::vector<const char*>& exec_argv() const {
     return exec_argv_;
   }
 
@@ -266,8 +261,7 @@ class NodeInstanceData {
   uv_loop_t* const event_loop_;
   const int argc_;
   const char** argv_;
-  const int exec_argc_;
-  const char** exec_argv_;
+  const std::vector<const char*> exec_argv_;
   const bool use_debug_agent_flag_;
 
   DISALLOW_COPY_AND_ASSIGN(NodeInstanceData);

@@ -173,7 +173,7 @@ void Agent::WorkerRun() {
 
     const bool start_profiler_idle_notifier = false;
     env.Start(arraysize(argv), argv,
-              arraysize(argv), argv,
+              std::vector<const char*>(argv, argv + arraysize(argv)),
               start_profiler_idle_notifier);
 
     child_env_ = &env;

@@ -59,6 +59,7 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -138,8 +139,7 @@ static bool throw_deprecation = false;
 static bool trace_sync_io = false;
 static bool track_heap_objects = false;
 static const char* eval_string = nullptr;
-static unsigned int preload_module_count = 0;
-static const char** preload_modules = nullptr;
+static std::vector<const char*> preload_modules;
 #if HAVE_INSPECTOR
 static bool use_inspector = false;
 #else
@@ -2903,8 +2903,7 @@ void StopProfilerIdleNotifier(const FunctionCallbackInfo<Value>& args) {
 void SetupProcessObject(Environment* env,
                         int argc,
                         const char* const* argv,
-                        int exec_argc,
-                        const char* const* exec_argv) {
+                        const std::vector<const char*>& exec_argv) {
   HandleScope scope(env->isolate());
 
   Local<Object> process = env->process_object();
@@ -3064,8 +3063,8 @@ void SetupProcessObject(Environment* env,
   process->Set(env->argv_string(), arguments);
 
   // process.execArgv
-  Local<Array> exec_arguments = Array::New(env->isolate(), exec_argc);
-  for (int i = 0; i < exec_argc; ++i) {
+  Local<Array> exec_arguments = Array::New(env->isolate(), exec_argv.size());
+  for (size_t i = 0; i < exec_argv.size(); ++i) {
     exec_arguments->Set(i, String::NewFromUtf8(env->isolate(), exec_argv[i]));
   }
   process->Set(env->exec_argv_string(), exec_arguments);
@@ -3114,21 +3113,15 @@ void SetupProcessObject(Environment* env,
     READONLY_PROPERTY(process, "_forceRepl", True(env->isolate()));
   }
 
-  if (preload_module_count) {
-    CHECK(preload_modules);
+  if (!preload_modules.empty()) {
     Local<Array> array = Array::New(env->isolate());
-    for (unsigned int i = 0; i < preload_module_count; ++i) {
+    for (unsigned int i = 0; i < preload_modules.size(); ++i) {
       Local<String> module = String::NewFromUtf8(env->isolate(),
                                                  preload_modules[i]);
       array->Set(i, module);
     }
-    READONLY_PROPERTY(process,
-                      "_preload_modules",
-                      array);
-
-    delete[] preload_modules;
-    preload_modules = nullptr;
-    preload_module_count = 0;
+    READONLY_PROPERTY(process, "_preload_modules", array);
+    preload_modules.clear();
   }
 
   // --no-deprecation
@@ -3536,29 +3529,12 @@ static void PrintHelp() {
 //  * v8_argv contains argv[0] plus any V8 options
 static void ParseArgs(int* argc,
                       const char** argv,
-                      int* exec_argc,
-                      const char*** exec_argv,
-                      int* v8_argc,
-                      const char*** v8_argv) {
+                      std::vector<const char*>* exec_argv,
+                      std::vector<const char*>* v8_argv) {
   const unsigned int nargs = static_cast<unsigned int>(*argc);
-  const char** new_exec_argv = new const char*[nargs];
-  const char** new_v8_argv = new const char*[nargs];
-  const char** new_argv = new const char*[nargs];
-  const char** local_preload_modules = new const char*[nargs];
-
-  for (unsigned int i = 0; i < nargs; ++i) {
-    new_exec_argv[i] = nullptr;
-    new_v8_argv[i] = nullptr;
-    new_argv[i] = nullptr;
-    local_preload_modules[i] = nullptr;
-  }
-
   // exec_argv starts with the first option, the other two start with argv[0].
-  unsigned int new_exec_argc = 0;
-  unsigned int new_v8_argc = 1;
-  unsigned int new_argc = 1;
-  new_v8_argv[0] = argv[0];
-  new_argv[0] = argv[0];
+  std::vector<const char*> new_argv(&argv[0], &argv[1]);
+  v8_argv->push_back(argv[0]);
 
   unsigned int index = 1;
   bool short_circuit = false;
@@ -3608,7 +3584,7 @@ static void ParseArgs(int* argc,
         exit(9);
       }
       args_consumed += 1;
-      local_preload_modules[preload_module_count++] = module;
+      preload_modules.push_back(module);
     } else if (strcmp(arg, "--check") == 0 || strcmp(arg, "-c") == 0) {
       syntax_check_only = true;
     } else if (strcmp(arg, "--interactive") == 0 || strcmp(arg, "-i") == 0) {
@@ -3638,8 +3614,7 @@ static void ParseArgs(int* argc,
     } else if (strcmp(arg, "--zero-fill-buffers") == 0) {
       zero_fill_all_buffers = true;
     } else if (strcmp(arg, "--v8-options") == 0) {
-      new_v8_argv[new_v8_argc] = "--help";
-      new_v8_argc += 1;
+      v8_argv->push_back("--help");
     } else if (strncmp(arg, "--v8-pool-size=", 15) == 0) {
       v8_thread_pool_size = atoi(arg + 15);
 #if HAVE_OPENSSL
@@ -3661,42 +3636,20 @@ static void ParseArgs(int* argc,
       // consumed in js
     } else {
       // V8 option.  Pass through as-is.
-      new_v8_argv[new_v8_argc] = arg;
-      new_v8_argc += 1;
+      v8_argv->push_back(arg);
     }
 
-    memcpy(new_exec_argv + new_exec_argc,
-           argv + index,
-           args_consumed * sizeof(*argv));
-
-    new_exec_argc += args_consumed;
+    exec_argv->insert(exec_argv->end(),
+                      &argv[index], &argv[index + args_consumed]);
     index += args_consumed;
   }
 
   // Copy remaining arguments.
-  const unsigned int args_left = nargs - index;
-  memcpy(new_argv + new_argc, argv + index, args_left * sizeof(*argv));
-  new_argc += args_left;
-
-  *exec_argc = new_exec_argc;
-  *exec_argv = new_exec_argv;
-  *v8_argc = new_v8_argc;
-  *v8_argv = new_v8_argv;
+  new_argv.insert(new_argv.end(), &argv[index], &argv[nargs]);
 
   // Copy new_argv over argv and update argc.
-  memcpy(argv, new_argv, new_argc * sizeof(*argv));
-  delete[] new_argv;
-  *argc = static_cast<int>(new_argc);
-
-  // Copy the preload_modules from the local array to an appropriately sized
-  // global array.
-  if (preload_module_count > 0) {
-    CHECK(!preload_modules);
-    preload_modules = new const char*[preload_module_count];
-    memcpy(preload_modules, local_preload_modules,
-           preload_module_count * sizeof(*preload_modules));
-  }
-  delete[] local_preload_modules;
+  std::copy(new_argv.begin(), new_argv.end(), &argv[0]);
+  *argc = static_cast<int>(new_argv.size());
 }
 
 
@@ -4103,10 +4056,7 @@ inline void PlatformInit() {
 }
 
 
-void Init(int* argc,
-          const char** argv,
-          int* exec_argc,
-          const char*** exec_argv) {
+void Init(int* argc, const char** argv, std::vector<const char*>* exec_argv) {
   // Initialize prog_start_time to get relative uptime.
   prog_start_time = static_cast<double>(uv_now(uv_default_loop()));
 
@@ -4128,16 +4078,15 @@ void Init(int* argc,
 #endif
 
   // Parse a few arguments which are specific to Node.
-  int v8_argc;
-  const char** v8_argv;
-  ParseArgs(argc, argv, exec_argc, exec_argv, &v8_argc, &v8_argv);
+  std::vector<const char*> v8_argv;
+  ParseArgs(argc, argv, exec_argv, &v8_argv);
 
   // TODO(bnoordhuis) Intercept --prof arguments and start the CPU profiler
   // manually?  That would give us a little more control over its runtime
   // behavior but it could also interfere with the user's intentions in ways
   // we fail to anticipate.  Dillema.
-  for (int i = 1; i < v8_argc; ++i) {
-    if (strncmp(v8_argv[i], "--prof", sizeof("--prof") - 1) == 0) {
+  for (auto arg : v8_argv) {
+    if (strncmp(arg, "--prof", sizeof("--prof") - 1) == 0) {
       v8_is_profiling = true;
       break;
     }
@@ -4166,18 +4115,20 @@ void Init(int* argc,
 #endif
   // The const_cast doesn't violate conceptual const-ness.  V8 doesn't modify
   // the argv array or the elements it points to.
-  if (v8_argc > 1)
-    V8::SetFlagsFromCommandLine(&v8_argc, const_cast<char**>(v8_argv), true);
+  if (v8_argv.size() > 1) {
+    const bool remove_flags = true;
+    int v8_argc = static_cast<int>(v8_argv.size());
+    V8::SetFlagsFromCommandLine(&v8_argc, const_cast<char**>(v8_argv.data()),
+                                remove_flags);
 
-  // Anything that's still in v8_argv is not a V8 or a node option.
-  for (int i = 1; i < v8_argc; i++) {
-    fprintf(stderr, "%s: bad option: %s\n", argv[0], v8_argv[i]);
-  }
-  delete[] v8_argv;
-  v8_argv = nullptr;
+    // Anything that's still in v8_argv is not a V8 or a node option.
+    for (int i = 1; i < v8_argc; i++) {
+      fprintf(stderr, "%s: bad option: %s\n", argv[0], v8_argv[i]);
+    }
 
-  if (v8_argc > 1) {
-    exit(9);
+    if (v8_argc > 1) {
+      exit(9);
+    }
   }
 
   // Unconditionally force typed arrays to allocate outside the v8 heap. This
@@ -4284,7 +4235,9 @@ Environment* CreateEnvironment(IsolateData* isolate_data,
   HandleScope handle_scope(isolate);
   Context::Scope context_scope(context);
   auto env = new Environment(isolate_data, context);
-  env->Start(argc, argv, exec_argc, exec_argv, v8_is_profiling);
+  env->Start(argc, argv,
+             std::vector<const char*>(exec_argv, &exec_argv[exec_argc]),
+             v8_is_profiling);
   return env;
 }
 
@@ -4329,7 +4282,6 @@ static void StartNodeInstance(void* arg) {
     Environment env(&isolate_data, context);
     env.Start(instance_data->argc(),
               instance_data->argv(),
-              instance_data->exec_argc(),
               instance_data->exec_argv(),
               v8_is_profiling);
 
@@ -4405,9 +4357,8 @@ int Start(int argc, char** argv) {
 
   // This needs to run *before* V8::Initialize().  The const_cast is not
   // optional, in case you're wondering.
-  int exec_argc;
-  const char** exec_argv;
-  Init(&argc, const_cast<const char**>(argv), &exec_argc, &exec_argv);
+  std::vector<const char*> exec_argv;
+  Init(&argc, const_cast<const char**>(argv), &exec_argv);
 
 #if HAVE_OPENSSL
 #ifdef NODE_FIPS_MODE
@@ -4429,7 +4380,6 @@ int Start(int argc, char** argv) {
                                    uv_default_loop(),
                                    argc,
                                    const_cast<const char**>(argv),
-                                   exec_argc,
                                    exec_argv,
                                    use_debug_agent);
     StartNodeInstance(&instance_data);
@@ -4438,9 +4388,6 @@ int Start(int argc, char** argv) {
   V8::Dispose();
 
   v8_platform.Dispose();
-
-  delete[] exec_argv;
-  exec_argv = nullptr;
 
   return exit_code;
 }

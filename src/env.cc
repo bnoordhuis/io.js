@@ -25,8 +25,7 @@ using v8::Value;
 
 void Environment::Start(int argc,
                         const char* const* argv,
-                        int exec_argc,
-                        const char* const* exec_argv,
+                        const std::vector<const char*>& exec_argv,
                         bool start_profiler_idle_notifier) {
   HandleScope handle_scope(isolate());
   Context::Scope context_scope(context());
@@ -88,7 +87,7 @@ void Environment::Start(int argc,
       process_template->GetFunction()->NewInstance(context()).ToLocalChecked();
   set_process_object(process_object);
 
-  SetupProcessObject(this, argc, argv, exec_argc, exec_argv);
+  SetupProcessObject(this, argc, argv, exec_argv);
   LoadAsyncWrapperInfo(this);
 }
 

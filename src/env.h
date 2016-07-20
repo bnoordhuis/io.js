@@ -16,6 +16,7 @@
 #include "v8.h"
 
 #include <stdint.h>
+#include <vector>
 
 // Caveat emptor: we're going slightly crazy with macros here but the end
 // hopefully justifies the means. We have a lot of per-context properties
@@ -448,8 +449,7 @@ class Environment {
 
   void Start(int argc,
              const char* const* argv,
-             int exec_argc,
-             const char* const* exec_argv,
+             const std::vector<const char*>& exec_argv,
              bool start_profiler_idle_notifier);
   void AssignToContext(v8::Local<v8::Context> context);
 
