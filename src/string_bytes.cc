@@ -6,6 +6,7 @@
 #include "v8.h"
 
 #include <limits.h>
+#include <string.h>
 
 #include <algorithm>
 #include <new>

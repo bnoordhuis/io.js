@@ -31,8 +31,8 @@
 #include "v8.h"
 #include "v8-debug.h"
 
-#include <string.h>
 #include <string>
+#include <vector>
 
 // Forward declaration to break recursive dependency chain with src/env.h.
 namespace node {
@@ -42,30 +42,11 @@ class Environment;
 namespace node {
 namespace debugger {
 
-class AgentMessage {
- public:
-  AgentMessage(uint16_t* val, int length) : length_(length) {
-    if (val == nullptr) {
-      data_ = val;
-    } else {
-      data_ = new uint16_t[length];
-      memcpy(data_, val, length * sizeof(*data_));
-    }
-  }
-
-  ~AgentMessage() {
-    delete[] data_;
-    data_ = nullptr;
-  }
-
-  inline const uint16_t* data() const { return data_; }
-  inline int length() const { return length_; }
-
+struct AgentMessage {
+  AgentMessage() = default;
+  AgentMessage(const uint16_t* data, size_t size) : data(data, &data[size]) {}
+  const std::vector<uint16_t> data;
   ListNode<AgentMessage> member;
-
- private:
-  uint16_t* data_;
-  int length_;
 };
 
 class Agent {

@@ -134,7 +134,7 @@ void Agent::Stop() {
   v8::Debug::SetMessageHandler(parent_env()->isolate(), nullptr);
 
   // Send empty message to terminate things
-  EnqueueMessage(new AgentMessage(nullptr, 0));
+  EnqueueMessage(new AgentMessage());
 
   // Signal worker thread to make it stop
   err = uv_async_send(&child_signal_);
@@ -272,7 +272,7 @@ void Agent::ChildSignalCb(uv_async_t* signal) {
   Mutex::ScopedLock scoped_lock(a->message_mutex_);
   while (AgentMessage* msg = a->messages_.PopFront()) {
     // Time to close everything
-    if (msg->data() == nullptr) {
+    if (msg->data.empty()) {
       delete msg;
 
       MakeCallback(isolate, api, "onclose", 0, nullptr);
@@ -287,9 +287,9 @@ void Agent::ChildSignalCb(uv_async_t* signal) {
 
     Local<Value> argv[] = {
       String::NewFromTwoByte(isolate,
-                             msg->data(),
+                             msg->data.data(),
                              String::kNormalString,
-                             msg->length())
+                             msg->data.size())
     };
 
     // Emit message

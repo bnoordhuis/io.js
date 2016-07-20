@@ -8,6 +8,8 @@
 #include "stream_base-inl.h"
 #include "v8.h"
 
+#include <string.h>
+
 namespace node {
 
 using v8::Array;

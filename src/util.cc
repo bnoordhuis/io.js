@@ -1,7 +1,9 @@
 #include "util.h"
 #include "string_bytes.h"
 #include "node_buffer.h"
+
 #include <stdio.h>
+#include <string.h>
 
 namespace node {
 

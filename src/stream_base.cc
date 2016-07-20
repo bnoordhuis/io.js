@@ -13,6 +13,7 @@
 #include "v8.h"
 
 #include <limits.h>  // INT_MAX
+#include <string.h>
 
 namespace node {
 

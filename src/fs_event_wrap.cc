@@ -9,6 +9,7 @@
 #include "string_bytes.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 namespace node {
 
