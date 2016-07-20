@@ -680,7 +680,6 @@ void SecureContext::AddCACert(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   if (args.Length() != 1) {
     return env->ThrowTypeError("CA certificate argument is mandatory");
@@ -720,7 +719,6 @@ void SecureContext::AddCRL(const FunctionCallbackInfo<Value>& args) {
   }
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   BIO *bio = LoadBIO(env, args[0]);
   if (!bio)
@@ -747,7 +745,6 @@ void SecureContext::AddRootCerts(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   CHECK_EQ(sc->ca_store_, nullptr);
 
@@ -783,7 +780,6 @@ void SecureContext::SetCiphers(const FunctionCallbackInfo<Value>& args) {
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   Environment* env = sc->env();
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   if (args.Length() != 1) {
     return env->ThrowTypeError("Ciphers argument is mandatory");
@@ -830,7 +826,6 @@ void SecureContext::SetDHParam(const FunctionCallbackInfo<Value>& args) {
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.This());
   Environment* env = sc->env();
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   // Auto DH is not supported in openssl 1.0.1, so dhparam needs
   // to be specifed explicitly
@@ -955,7 +950,6 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
   SecureContext* sc;
   ASSIGN_OR_RETURN_UNWRAP(&sc, args.Holder());
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   if (args.Length() < 1) {
     return env->ThrowTypeError("PFX certificate argument is mandatory");
@@ -1564,7 +1558,6 @@ void SSLWrap<Base>::GetPeerCertificate(
   Environment* env = w->ssl_env();
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence unused variable warning.
 
   Local<Object> result;
   Local<Object> info;
@@ -1773,7 +1766,6 @@ void SSLWrap<Base>::Renegotiate(const FunctionCallbackInfo<Value>& args) {
   ASSIGN_OR_RETURN_UNWRAP(&w, args.Holder());
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence unused variable warning.
 
   bool yes = SSL_renegotiate(w->ssl_) == 1;
   args.GetReturnValue().Set(yes);
@@ -2529,7 +2521,6 @@ int Connection::HandleSSLError(const char* func,
                                ZeroStatus zs,
                                SyscallStatus ss) {
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence unused variable warning.
 
   if (rv > 0)
     return rv;
@@ -4032,7 +4023,6 @@ void Sign::SignFinal(const FunctionCallbackInfo<Value>& args) {
   md_value = new unsigned char[md_len];
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   Error err = sign->SignFinal(
       buf,
@@ -4152,7 +4142,6 @@ SignBase::Error Verify::VerifyFinal(const char* key_pem,
     return kSignNotInitialised;
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   EVP_PKEY* pkey = nullptr;
   BIO* bp = nullptr;
@@ -4374,7 +4363,6 @@ void PublicKeyCipher::Cipher(const FunctionCallbackInfo<Value>& args) {
   size_t out_len = 0;
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   bool r = Cipher<operation, EVP_PKEY_cipher_init, EVP_PKEY_cipher>(
       kbuf,
@@ -4682,7 +4670,6 @@ void DiffieHellman::ComputeSecret(const FunctionCallbackInfo<Value>& args) {
   }
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
   BIGNUM* key = nullptr;
 
   if (args.Length() == 0) {
@@ -5015,7 +5002,6 @@ void ECDH::SetPrivateKey(const FunctionCallbackInfo<Value>& args) {
   EC_KEY_set_public_key(ecdh->key_, nullptr);
 
   MarkPopErrorOnReturn mark_pop_error_on_return;
-  (void) &mark_pop_error_on_return;  // Silence compiler warning.
 
   const BIGNUM* priv_key = EC_KEY_get0_private_key(ecdh->key_);
   CHECK_NE(priv_key, nullptr);
@@ -5076,7 +5062,6 @@ bool ECDH::IsKeyValidForCurve(const BIGNUM* private_key) {
 
 bool ECDH::IsKeyPairValid() {
   MarkPopErrorOnReturn mark_pop_error_on_return;
-  (void) &mark_pop_error_on_return;  // Silence compiler warning.
   return 1 == EC_KEY_check_key(key_);
 }
 
@@ -5804,7 +5789,6 @@ void SetEngine(const FunctionCallbackInfo<Value>& args) {
   unsigned int flags = args[1]->Uint32Value();
 
   ClearErrorOnReturn clear_error_on_return;
-  (void) &clear_error_on_return;  // Silence compiler warning.
 
   const node::Utf8Value engine_id(env->isolate(), args[0]);
   ENGINE* engine = ENGINE_by_id(*engine_id);
