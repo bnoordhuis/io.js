@@ -1670,11 +1670,11 @@ void SSLWrap<Base>::GetSession(const FunctionCallbackInfo<Value>& args) {
   int slen = i2d_SSL_SESSION(sess, nullptr);
   CHECK_GT(slen, 0);
 
-  char* sbuf = new char[slen];
-  unsigned char* p = reinterpret_cast<unsigned char*>(sbuf);
+  std::vector<char> sbuf(slen);
+  unsigned char* p = reinterpret_cast<unsigned char*>(&sbuf[0]);
   i2d_SSL_SESSION(sess, &p);
-  args.GetReturnValue().Set(Encode(env->isolate(), sbuf, slen, BUFFER));
-  delete[] sbuf;
+  args.GetReturnValue().Set(
+      Encode(env->isolate(), &sbuf[0], sbuf.size(), BUFFER));
 }
 
 
@@ -1689,15 +1689,13 @@ void SSLWrap<Base>::SetSession(const FunctionCallbackInfo<Value>& args) {
     return env->ThrowError("Session argument is mandatory");
   }
 
-  THROW_AND_RETURN_IF_NOT_BUFFER(args[0], "Session");
-  size_t slen = Buffer::Length(args[0]);
-  char* sbuf = new char[slen];
-  memcpy(sbuf, Buffer::Data(args[0]), slen);
+  Local<Value> session_v = args[0];
+  THROW_AND_RETURN_IF_NOT_BUFFER(session_v, "Session");
+  const char* sbuf = Buffer::Data(session_v);
+  size_t slen = Buffer::Length(session_v);
 
   const unsigned char* p = reinterpret_cast<const unsigned char*>(sbuf);
   SSL_SESSION* sess = d2i_SSL_SESSION(nullptr, &p, slen);
-
-  delete[] sbuf;
 
   if (sess == nullptr)
     return;
@@ -3316,28 +3314,18 @@ bool CipherBase::IsAuthenticatedMode() const {
 }
 
 
-bool CipherBase::GetAuthTag(char** out, unsigned int* out_len) const {
-  // only callable after Final and if encrypting.
-  if (initialised_ || kind_ != kCipher || !auth_tag_)
-    return false;
-  *out_len = auth_tag_len_;
-  *out = static_cast<char*>(malloc(auth_tag_len_));
-  CHECK_NE(*out, nullptr);
-  memcpy(*out, auth_tag_, auth_tag_len_);
-  return true;
-}
-
-
 void CipherBase::GetAuthTag(const FunctionCallbackInfo<Value>& args) {
   Environment* env = Environment::GetCurrent(args);
   CipherBase* cipher;
   ASSIGN_OR_RETURN_UNWRAP(&cipher, args.Holder());
 
-  char* out = nullptr;
-  unsigned int out_len = 0;
-
-  if (cipher->GetAuthTag(&out, &out_len)) {
-    Local<Object> buf = Buffer::New(env, out, out_len).ToLocalChecked();
+  // Only callable after Final and when encrypting.
+  if (cipher->initialised_ == false &&
+      cipher->kind_ == kCipher &&
+      !cipher->auth_tag_.empty()) {
+    Local<Object> buf =
+        Buffer::Copy(env, &cipher->auth_tag_[0], cipher->auth_tag_.size())
+        .ToLocalChecked();
     args.GetReturnValue().Set(buf);
   } else {
     env->ThrowError("Attempting to get auth tag in unsupported state");
@@ -3348,10 +3336,7 @@ void CipherBase::GetAuthTag(const FunctionCallbackInfo<Value>& args) {
 bool CipherBase::SetAuthTag(const char* data, unsigned int len) {
   if (!initialised_ || !IsAuthenticatedMode() || kind_ != kDecipher)
     return false;
-  delete[] auth_tag_;
-  auth_tag_len_ = len;
-  auth_tag_ = new char[len];
-  memcpy(auth_tag_, data, len);
+  auth_tag_.assign(data, data + len);
   return true;
 }
 
@@ -3408,13 +3393,12 @@ bool CipherBase::Update(const char* data,
     return 0;
 
   // on first update:
-  if (kind_ == kDecipher && IsAuthenticatedMode() && auth_tag_ != nullptr) {
+  if (kind_ == kDecipher && IsAuthenticatedMode() && !auth_tag_.empty()) {
     EVP_CIPHER_CTX_ctrl(&ctx_,
                         EVP_CTRL_GCM_SET_TAG,
-                        auth_tag_len_,
-                        reinterpret_cast<unsigned char*>(auth_tag_));
-    delete[] auth_tag_;
-    auth_tag_ = nullptr;
+                        auth_tag_.size(),
+                        reinterpret_cast<unsigned char*>(&auth_tag_[0]));
+    auth_tag_.clear();
   }
 
   *out_len = len + EVP_CIPHER_CTX_block_size(&ctx_);
@@ -3490,16 +3474,13 @@ bool CipherBase::Final(unsigned char** out, int *out_len) {
   int r = EVP_CipherFinal_ex(&ctx_, *out, out_len);
 
   if (r && kind_ == kCipher) {
-    delete[] auth_tag_;
-    auth_tag_ = nullptr;
+    auth_tag_.clear();
     if (IsAuthenticatedMode()) {
-      auth_tag_len_ = EVP_GCM_TLS_TAG_LEN;  // use default tag length
-      auth_tag_ = new char[auth_tag_len_];
-      memset(auth_tag_, 0, auth_tag_len_);
+      auth_tag_.resize(EVP_GCM_TLS_TAG_LEN);  // Use default tag length.
       EVP_CIPHER_CTX_ctrl(&ctx_,
                           EVP_CTRL_GCM_GET_TAG,
-                          auth_tag_len_,
-                          reinterpret_cast<unsigned char*>(auth_tag_));
+                          auth_tag_.size(),
+                          reinterpret_cast<unsigned char*>(&auth_tag_[0]));
     }
   }
 

@@ -32,6 +32,8 @@
 #include <openssl/rand.h>
 #include <openssl/pkcs12.h>
 
+#include <vector>
+
 #define EVP_F_EVP_DECRYPTFINAL 101
 
 #if !defined(OPENSSL_NO_TLSEXT) && defined(SSL_CTX_set_tlsext_status_cb)
@@ -417,9 +419,6 @@ class Connection : public AsyncWrap, public SSLWrap<Connection> {
 class CipherBase : public BaseObject {
  public:
   ~CipherBase() override {
-    if (!initialised_)
-      return;
-    delete[] auth_tag_;
     EVP_CIPHER_CTX_cleanup(&ctx_);
   }
 
@@ -442,7 +441,6 @@ class CipherBase : public BaseObject {
   bool SetAutoPadding(bool auto_padding);
 
   bool IsAuthenticatedMode() const;
-  bool GetAuthTag(char** out, unsigned int* out_len) const;
   bool SetAuthTag(const char* data, unsigned int len);
   bool SetAAD(const char* data, unsigned int len);
 
@@ -463,9 +461,7 @@ class CipherBase : public BaseObject {
       : BaseObject(env, wrap),
         cipher_(nullptr),
         initialised_(false),
-        kind_(kind),
-        auth_tag_(nullptr),
-        auth_tag_len_(0) {
+        kind_(kind) {
     MakeWeak<CipherBase>(this);
   }
 
@@ -474,8 +470,7 @@ class CipherBase : public BaseObject {
   const EVP_CIPHER* cipher_; /* coverity[member_decl] */
   bool initialised_;
   CipherKind kind_;
-  char* auth_tag_;
-  unsigned int auth_tag_len_;
+  std::vector<char> auth_tag_;
 };
 
 class Hmac : public BaseObject {
