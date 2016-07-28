@@ -944,7 +944,7 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
   EVP_PKEY* pkey = nullptr;
   X509* cert = nullptr;
   STACK_OF(X509)* extra_certs = nullptr;
-  char* pass = nullptr;
+  std::string pass;
   bool ret = false;
 
   SecureContext* sc;
@@ -961,11 +961,11 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
   }
 
   if (args.Length() >= 2) {
-    THROW_AND_RETURN_IF_NOT_BUFFER(args[1], "Pass phrase");
-    size_t passlen = Buffer::Length(args[1]);
-    pass = new char[passlen + 1];
-    memcpy(pass, Buffer::Data(args[1]), passlen);
-    pass[passlen] = '\0';
+    Local<Value> phrase = args[1];
+    THROW_AND_RETURN_IF_NOT_BUFFER(phrase, "Pass phrase");
+    const char* data = Buffer::Data(phrase);
+    size_t size = Buffer::Length(phrase);
+    pass.assign(data, data + size);
   }
 
   // Free previous certs
@@ -979,7 +979,7 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
   }
 
   if (d2i_PKCS12_bio(in, &p12) &&
-      PKCS12_parse(p12, pass, &pkey, &cert, &extra_certs) &&
+      PKCS12_parse(p12, pass.c_str(), &pkey, &cert, &extra_certs) &&
       SSL_CTX_use_certificate_chain(sc->ctx_,
                                     cert,
                                     extra_certs,
@@ -1009,7 +1009,6 @@ void SecureContext::LoadPKCS12(const FunctionCallbackInfo<Value>& args) {
 
   PKCS12_free(p12);
   BIO_free_all(in);
-  delete[] pass;
 
   if (!ret) {
     unsigned long err = ERR_get_error();  // NOLINT(runtime/int)
