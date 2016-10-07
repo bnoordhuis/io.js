@@ -5,7 +5,9 @@
 #include "util-inl.h"
 #include "uv.h"
 
+#include <algorithm>
 #include <map>
+#include <vector>
 
 #ifdef NODE_ENABLE_VTUNE_PROFILING
 #include "../deps/v8/src/third_party/vtune/v8-vtune.h"
@@ -192,10 +194,41 @@ void IsolateWrap::CreateIsolateData(
   }
 }
 
+class CArray {
+ public:
+  CArray(v8::Local<v8::Context> context, v8::Local<v8::Array> array) {
+    std::vector<size_t> offsets;
+    std::vector<char> storage;
+    for (size_t i = 0, n = array->Length(); i < n; i += 1) {
+      auto maybe_value = array->Get(context, i);
+      if (maybe_value.IsEmpty()) return;  // Get property operation failed.
+      v8::String::Utf8Value string(maybe_value.ToLocalChecked());
+      if (*string == nullptr) return;  // ToString() operation failed.
+      offsets.push_back(storage.size());
+      storage.insert(storage.end(), *string, *string + string.length() + 1);
+    }
+    std::swap(storage_, storage);
+    elements_.resize(1 + offsets.size());  // Reserve space for sentinel NULL.
+    for (size_t i = 0; i < offsets.size(); i += 1) {
+      elements_[i] = &storage_[offsets[i]];
+    }
+  }
+
+  const char* const* elements() const { return &elements_[0]; }
+  size_t size() const { return elements_.size() - !empty(); }
+  bool empty() const { return elements_.empty(); }
+
+ private:
+  std::vector<char*> elements_;
+  std::vector<char> storage_;
+};
+
 void IsolateWrap::CreateProcessObject(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
   auto env = Environment::GetCurrent(args);
   if (!args[0]->IsUint32()) return env->ThrowError("Number expected.");
+  if (!args[1]->IsArray()) return env->ThrowError("Array expected.");
+  if (!args[2]->IsArray()) return env->ThrowError("Array expected.");
   auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
   auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
   if (isolate_and_contexts == nullptr) {
@@ -208,6 +241,10 @@ void IsolateWrap::CreateProcessObject(
     return env->ThrowError("No IsolateData.");
   }
   uint32_t context_id = args[0]->Uint32Value(env->context()).FromMaybe(0);
+  CArray argv(env->context(), args[1].As<v8::Array>());
+  CArray exec_argv(env->context(), args[2].As<v8::Array>());
+  if (argv.empty()) return;  // Exception pending.
+  if (exec_argv.empty()) return;  // Exception pending.
   v8::Persistent<v8::Context>* persistent_context;
   {
     auto contexts = isolate_and_contexts->contexts();
@@ -228,12 +265,10 @@ void IsolateWrap::CreateProcessObject(
     auto context = PersistentToLocal(isolate, *persistent_context);
     v8::Context::Scope context_scope(context);
     new_env = new Environment(isolate_and_contexts->isolate_data(), context);
-    // FIXME(bnoordhuis) Make this configurable.
-    static const char* const argv[] = { "node", nullptr };
-    static const char* const exec_argv[] = { "node", nullptr };
-    const bool v8_is_profiling = false;
-    new_env->Start(arraysize(argv) - 1, argv,
-                   arraysize(exec_argv) - 1, exec_argv, v8_is_profiling);
+    const bool start_profiler_idle_notifier = false;
+    new_env->Start(argv.size(), argv.elements(),
+                   exec_argv.size(), exec_argv.elements(),
+                   start_profiler_idle_notifier);
     Environment::AsyncCallbackScope callback_scope(new_env);
     LoadEnvironment(new_env);
   }
