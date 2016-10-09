@@ -17,11 +17,28 @@ namespace node {
 
 class IsolateAndContexts;
 
+class Thread {
+ public:
+  IsolateAndContexts* isolate_and_contexts_ = nullptr;
+};
+
+class ThreadWrap {
+ public:
+  inline static void New(const v8::FunctionCallbackInfo<v8::Value>&);
+
+ private:
+  v8::Persistent<v8::Object> holder_;
+
+  DISALLOW_COPY_AND_ASSIGN(ThreadWrap);
+};
+
 class IsolateWrap {
  public:
   inline static void New(const v8::FunctionCallbackInfo<v8::Value>&);
 
   inline static void NewContext(const v8::FunctionCallbackInfo<v8::Value>&);
+  inline static void CreateAsyncHandle(
+      const v8::FunctionCallbackInfo<v8::Value>& args);
   inline static void CreateIsolateData(
       const v8::FunctionCallbackInfo<v8::Value>&);
   inline static void CreateProcessObject(
@@ -32,6 +49,8 @@ class IsolateWrap {
   inline IsolateAndContexts* isolate_and_contexts() const;
 
  private:
+  friend void ThreadWrap::New(const v8::FunctionCallbackInfo<v8::Value>&);
+
   inline IsolateWrap(v8::Isolate* isolate,
                      v8::Local<v8::Object> holder,
                      IsolateAndContexts* isolate_and_contexts);
@@ -70,14 +89,46 @@ class IsolateAndContexts {
       const v8::FunctionCallbackInfo<v8::Value>&);
 
   v8::Isolate* isolate_ = nullptr;
-  uv_loop_t* event_loop_ = nullptr;
+  uv_loop_t* event_loop_ = nullptr;  // &this->event_loop_storage_ or nullptr.
   IsolateData* isolate_data_ = nullptr;
   uint32_t context_id_counter_ = 0;
   Contexts contexts_;
   Environments environments_;
   uv_loop_t event_loop_storage_;
+  uv_async_t async_handle_;
 
   DISALLOW_COPY_AND_ASSIGN(IsolateAndContexts);
+};
+
+// TODO(bnoordhuis) Probably also useful outside this file.
+class CArray {
+ public:
+  // Have pending JS exception if !ok() after construction.
+  CArray(v8::Local<v8::Context> context, v8::Local<v8::Array> array) {
+    std::vector<size_t> offsets;
+    std::vector<char> storage;
+    for (size_t i = 0, n = array->Length(); i < n; i += 1) {
+      auto maybe_value = array->Get(context, i);
+      if (maybe_value.IsEmpty()) return;  // Get property operation failed.
+      v8::String::Utf8Value string(maybe_value.ToLocalChecked());
+      if (*string == nullptr) return;  // ToString() operation failed.
+      offsets.push_back(storage.size());
+      storage.insert(storage.end(), *string, *string + string.length() + 1);
+    }
+    std::swap(storage_, storage);
+    elements_.resize(1 + offsets.size());  // Reserve space for sentinel NULL.
+    for (size_t i = 0; i < offsets.size(); i += 1) {
+      elements_[i] = &storage_[offsets[i]];
+    }
+  }
+
+  const char* const* elements() const { return &elements_[0]; }
+  size_t size() const { return elements_.size() - ok(); }  // Minus sentinel.
+  bool ok() const { return !elements_.empty(); }
+
+ private:
+  std::vector<char*> elements_;
+  std::vector<char> storage_;
 };
 
 // TODO(bnoordhuis) Use node::ArrayBufferAllocator
@@ -144,13 +195,19 @@ void IsolateWrap::New(const v8::FunctionCallbackInfo<v8::Value>& args) {
   new IsolateWrap(args.GetIsolate(), args.Holder(), isolate_and_contexts);
 }
 
-void IsolateWrap::NewContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  auto env = Environment::GetCurrent(args);
-  auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
-  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
-  if (isolate_and_contexts == nullptr) {
-    return env->ThrowError("IsolateWrap is neutered.");
+#define THROW_AND_RETURN_IF_NEUTERED(arg)                                     \
+  auto env = Environment::GetCurrent(args);                                   \
+  if (!env->isolate_wrap_constructor_template()->HasInstance(arg)) {          \
+    return env->ThrowError("IsolateWrap expected.");                          \
+  }                                                                           \
+  auto isolate_wrap = Unwrap<IsolateWrap>(arg.As<v8::Object>());              \
+  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();           \
+  if (isolate_and_contexts == nullptr) {                                      \
+    return env->ThrowError("IsolateWrap is neutered.");                                   \
   }
+
+void IsolateWrap::NewContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
   uint32_t context_id;
   {
     auto isolate = isolate_and_contexts->isolate();
@@ -166,12 +223,7 @@ void IsolateWrap::NewContext(const v8::FunctionCallbackInfo<v8::Value>& args) {
 
 void IsolateWrap::CreateIsolateData(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  auto env = Environment::GetCurrent(args);
-  auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
-  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
-  if (isolate_and_contexts == nullptr) {
-    return env->ThrowError("IsolateWrap is neutered.");
-  }
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
   if (isolate_and_contexts->event_loop()) {
     return env->ThrowError("Event loop already initialized.");
   }
@@ -194,57 +246,23 @@ void IsolateWrap::CreateIsolateData(
   }
 }
 
-class CArray {
- public:
-  CArray(v8::Local<v8::Context> context, v8::Local<v8::Array> array) {
-    std::vector<size_t> offsets;
-    std::vector<char> storage;
-    for (size_t i = 0, n = array->Length(); i < n; i += 1) {
-      auto maybe_value = array->Get(context, i);
-      if (maybe_value.IsEmpty()) return;  // Get property operation failed.
-      v8::String::Utf8Value string(maybe_value.ToLocalChecked());
-      if (*string == nullptr) return;  // ToString() operation failed.
-      offsets.push_back(storage.size());
-      storage.insert(storage.end(), *string, *string + string.length() + 1);
-    }
-    std::swap(storage_, storage);
-    elements_.resize(1 + offsets.size());  // Reserve space for sentinel NULL.
-    for (size_t i = 0; i < offsets.size(); i += 1) {
-      elements_[i] = &storage_[offsets[i]];
-    }
-  }
-
-  const char* const* elements() const { return &elements_[0]; }
-  size_t size() const { return elements_.size() - !empty(); }
-  bool empty() const { return elements_.empty(); }
-
- private:
-  std::vector<char*> elements_;
-  std::vector<char> storage_;
-};
-
 void IsolateWrap::CreateProcessObject(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  auto env = Environment::GetCurrent(args);
-  if (!args[0]->IsUint32()) return env->ThrowError("Number expected.");
-  if (!args[1]->IsArray()) return env->ThrowError("Array expected.");
-  if (!args[2]->IsArray()) return env->ThrowError("Array expected.");
-  auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
-  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
-  if (isolate_and_contexts == nullptr) {
-    return env->ThrowError("IsolateWrap is neutered.");
-  }
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
   if (isolate_and_contexts->event_loop() == nullptr) {
     return env->ThrowError("No event loop.");
   }
   if (isolate_and_contexts->isolate_data() == nullptr) {
     return env->ThrowError("No IsolateData.");
   }
+  if (!args[0]->IsUint32()) return env->ThrowError("Number expected.");
+  if (!args[1]->IsArray()) return env->ThrowError("Array expected.");
+  if (!args[2]->IsArray()) return env->ThrowError("Array expected.");
   uint32_t context_id = args[0]->Uint32Value(env->context()).FromMaybe(0);
   CArray argv(env->context(), args[1].As<v8::Array>());
   CArray exec_argv(env->context(), args[2].As<v8::Array>());
-  if (argv.empty()) return;  // Exception pending.
-  if (exec_argv.empty()) return;  // Exception pending.
+  if (!argv.ok()) return;  // Exception pending.
+  if (!exec_argv.ok()) return;  // Exception pending.
   v8::Persistent<v8::Context>* persistent_context;
   {
     auto contexts = isolate_and_contexts->contexts();
@@ -275,14 +293,16 @@ void IsolateWrap::CreateProcessObject(
   environments->insert(std::make_pair(context_id, new_env));
 }
 
+void IsolateWrap::CreateAsyncHandle(
+    const v8::FunctionCallbackInfo<v8::Value>& args) {
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
+  auto event_loop = isolate_and_contexts->event_loop();
+  if (event_loop == nullptr) return env->ThrowError("No event loop.");
+}
+
 void IsolateWrap::RunEventLoop(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  auto env = Environment::GetCurrent(args);
-  auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
-  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
-  if (isolate_and_contexts == nullptr) {
-    return env->ThrowError("IsolateWrap is neutered.");
-  }
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
   auto event_loop = isolate_and_contexts->event_loop();
   if (event_loop == nullptr) return env->ThrowError("No event loop.");
   int result;
@@ -356,15 +376,10 @@ std::string IsolateWrap::RunInContext(
 
 void IsolateWrap::RunInContext(
     const v8::FunctionCallbackInfo<v8::Value>& args) {
-  auto env = Environment::GetCurrent(args);
+  THROW_AND_RETURN_IF_NEUTERED(args.Holder());
   if (!args[0]->IsUint32()) return env->ThrowError("Number expected.");
   if (!args[1]->IsString()) return env->ThrowError("String expected.");
   if (!args[2]->IsString()) return env->ThrowError("String expected.");
-  auto isolate_wrap = Unwrap<IsolateWrap>(args.Holder());
-  auto isolate_and_contexts = isolate_wrap->isolate_and_contexts();
-  if (isolate_and_contexts == nullptr) {
-    return env->ThrowError("IsolateWrap is neutered.");
-  }
   uint32_t context_id = args[0]->Uint32Value(env->context()).FromMaybe(0);
   v8::String::Utf8Value script_name(args[1]);
   v8::String::Utf8Value script_source(args[2]);
@@ -375,27 +390,52 @@ void IsolateWrap::RunInContext(
   if (!error_message.empty()) return env->ThrowError(error_message.c_str());
 }
 
+void ThreadWrap::New(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  THROW_AND_RETURN_IF_NEUTERED(args[0]);
+  if (!args.IsConstructCall()) {
+    return env->ThrowError("Not a construct call.");
+  }
+  //isolate_wrap->isolate_and_contexts_ = nullptr;  // Neuter IsolateWrap.
+}
+
 inline void InitializeBinding(v8::Local<v8::Object> target,
                               v8::Local<v8::Value> unused,
                               v8::Local<v8::Context> context) {
   auto env = Environment::GetCurrent(context);
 
-  auto constructor = env->NewFunctionTemplate(IsolateWrap::New);
-  constructor->InstanceTemplate()->SetInternalFieldCount(1);
+  {
+    auto constructor = env->NewFunctionTemplate(IsolateWrap::New);
+    constructor->InstanceTemplate()->SetInternalFieldCount(1);
 
-  auto constructor_name = OneByteString(env->isolate(), "IsolateWrap");
-  constructor->SetClassName(constructor_name);
+    auto constructor_name = OneByteString(env->isolate(), "IsolateWrap");
+    constructor->SetClassName(constructor_name);
 
-  env->SetProtoMethod(constructor, "newContext", IsolateWrap::NewContext);
-  env->SetProtoMethod(constructor, "createIsolateData",
-                      IsolateWrap::CreateIsolateData);
-  env->SetProtoMethod(constructor, "createProcessObject",
-                      IsolateWrap::CreateProcessObject);
-  env->SetProtoMethod(constructor, "runEventLoop", IsolateWrap::RunEventLoop);
-  env->SetProtoMethod(constructor, "runInContext", IsolateWrap::RunInContext);
+    env->SetProtoMethod(constructor, "newContext", IsolateWrap::NewContext);
+    env->SetProtoMethod(constructor, "createAsyncHandle",
+                        IsolateWrap::CreateAsyncHandle);
+    env->SetProtoMethod(constructor, "createIsolateData",
+                        IsolateWrap::CreateIsolateData);
+    env->SetProtoMethod(constructor, "createProcessObject",
+                        IsolateWrap::CreateProcessObject);
+    env->SetProtoMethod(constructor, "runEventLoop", IsolateWrap::RunEventLoop);
+    env->SetProtoMethod(constructor, "runInContext", IsolateWrap::RunInContext);
 
-  auto function = constructor->GetFunction();
-  CHECK(target->Set(context, constructor_name, function).FromJust());
+    auto function = constructor->GetFunction();
+    CHECK(target->Set(context, constructor_name, function).FromJust());
+
+    env->set_isolate_wrap_constructor_template(constructor);
+  }
+
+  {
+    auto constructor = env->NewFunctionTemplate(IsolateWrap::New);
+    constructor->InstanceTemplate()->SetInternalFieldCount(1);
+
+    auto constructor_name = OneByteString(env->isolate(), "ThreadWrap");
+    constructor->SetClassName(constructor_name);
+
+    auto function = constructor->GetFunction();
+    CHECK(target->Set(context, constructor_name, function).FromJust());
+  }
 }
 
 }  // namespace node
