@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <map>
+#include <list>
 #include <vector>
 
 #ifdef NODE_ENABLE_VTUNE_PROFILING
@@ -14,6 +15,158 @@
 #endif  // NODE_ENABLE_VTUNE_PROFILING
 
 namespace node {
+
+namespace x {
+
+class Thread;
+
+class Thread {
+ public:
+  inline static int NewForMainThread(uv_loop_t* event_loop);
+  inline static int New();  // Returns thread_id or error if < 0.
+  inline static bool Send(int thread_id, std::function<void()> action);
+  inline uv_loop_t* event_loop() const { return event_loop_; }
+
+ private:
+  template <typename> friend class std::default_delete;
+
+  inline Thread() : event_loop_(&event_loop_storage_) {}
+  inline ~Thread();
+
+  inline static void OnEvent(uv_async_t* handle);
+  inline void OnEvent();
+  inline static void ThreadMain(void* arg);
+  inline void ThreadMain();
+
+  uv_loop_t* event_loop_;
+  uv_async_t async_handle_;
+  uv_thread_t thread_;
+  uv_loop_t event_loop_storage_;
+
+  Mutex queue_mutex_;
+  std::list<std::function<void()>> queue_;
+
+  static Mutex thread_list_mutex;
+  static Thread* thread_list[128];
+
+  DISALLOW_COPY_AND_ASSIGN(Thread);
+};
+
+Mutex Thread::thread_list_mutex;
+Thread* Thread::thread_list[];
+
+Thread::~Thread() {
+  if (event_loop_ == &event_loop_storage_) {
+    auto force_close_cb = [] (uv_handle_t* handle, void* arg) {
+      auto close_cb = [] (uv_handle_t* handle) {
+        int* close_count = static_cast<int*>(handle->data);
+        *close_count -= 1;
+      };
+      if (uv_is_closing(handle)) return;
+      int* close_count = static_cast<int*>(arg);
+      handle->data = close_count;
+      uv_close(handle, close_cb);
+      *close_count += 1;
+    };
+    int close_count = 0;
+    uv_walk(event_loop(), force_close_cb, &close_count);
+    while (close_count > 0) {
+      uv_run(event_loop(), UV_RUN_ONCE);
+    }
+    CHECK_EQ(0, uv_loop_close(event_loop()));
+    event_loop_ = nullptr;
+  }
+}
+
+// We fob it for the main thread because it is kind of special: the event loop
+// exists by the time the thread system gets created and it also does not have
+// a dedicated thread, it simply runs on, eh, the main thread.
+int Thread::NewForMainThread(uv_loop_t* event_loop) {
+  std::unique_ptr<Thread> td(new Thread());
+  td->event_loop_ = event_loop;
+  if (int err = uv_async_init(td->event_loop(), &td->async_handle_, OnEvent))
+    return err;
+  Thread** const slot = thread_list + 0;
+  Mutex::ScopedLock scoped_lock(thread_list_mutex);
+  CHECK_EQ(*slot, nullptr);
+  *slot = td.release();
+  return 0;
+}
+
+int Thread::New() {
+  std::unique_ptr<Thread> td(new Thread());
+  if (int err = uv_loop_init(td->event_loop())) {
+    td->event_loop_ = nullptr;  // Destructor should not call uv_loop_close().
+    return err;
+  }
+  if (int err = uv_async_init(td->event_loop(), &td->async_handle_, OnEvent))
+    return err;
+  if (int err = uv_thread_create(&td->thread_, ThreadMain, td.get()))
+    return err;
+  {
+    Mutex::ScopedLock scoped_lock(thread_list_mutex);
+    for (auto& it : thread_list) {
+      if (it == nullptr) {
+        it = td.release();
+        return &it - thread_list;
+      }
+    }
+  }
+#if 0
+  auto raw_td = td.release();  // Leak intentional, freed in ThreadMain().
+  td->Send([=] {
+    uv_close(reinterpret_cast<uv_handle_t*>(&raw_td->async_handle_), nullptr);
+  });
+#endif
+  return UV_ENOMEM;
+}
+
+bool Thread::Send(int thread_id, std::function<void()> action) {
+  CHECK_LE(0, thread_id);
+  CHECK_LT(static_cast<size_t>(thread_id), arraysize(thread_list));
+  Mutex::ScopedLock first_scoped_lock(thread_list_mutex);
+  Thread* const td = thread_list[thread_id];
+  if (td == nullptr) return false;
+  Mutex::ScopedLock scoped_lock(td->queue_mutex_);
+  td->queue_.push_back(action);
+  uv_async_send(&td->async_handle_);  // Call with lock held.
+}
+
+void Thread::OnEvent(uv_async_t* handle) {
+  Thread* self = ContainerOf(&Thread::async_handle_, handle);
+  self->OnEvent();
+}
+
+void Thread::OnEvent() {
+  decltype(queue_) queue;
+  {
+    Mutex::ScopedLock scoped_lock(queue_mutex_);
+    std::swap(queue_, queue);
+  }
+  while (!queue.empty()) {
+    queue.front()();
+    queue.pop_front();
+  }
+}
+
+void Thread::ThreadMain(void* arg) {
+  Thread* self = static_cast<Thread*>(arg);
+  self->ThreadMain();
+  {
+    Mutex::ScopedLock scoped_lock(thread_list_mutex);
+    for (auto& it : thread_list) {
+      if (it == self)
+        it = nullptr;
+    }
+  }
+  delete self;  // TODO zero slot in thread list, racy now
+}
+
+void Thread::ThreadMain() {
+  CHECK_EQ(0, uv_run(event_loop(), UV_RUN_DEFAULT));
+}
+
+}  // namespace x
 
 class IsolateAndContexts;
 
