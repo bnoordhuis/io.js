@@ -196,48 +196,44 @@ static uv_async_t dispatch_debug_messages_async;
 static Mutex node_isolate_mutex;
 static v8::Isolate* node_isolate;
 
-static struct {
-#if NODE_USE_V8_PLATFORM
-  void Initialize(int thread_pool_size) {
-    platform_ = v8::platform::CreateDefaultPlatform(thread_pool_size);
-    V8::InitializePlatform(platform_);
-  }
-
-  void PumpMessageLoop(Isolate* isolate) {
-    v8::platform::PumpMessageLoop(platform_, isolate);
-  }
-
-  void Dispose() {
-    delete platform_;
-    platform_ = nullptr;
-  }
-
-  bool StartInspector(Environment *env, const char* script_path,
-                      int port, bool wait) {
-#if HAVE_INSPECTOR
-    return env->inspector_agent()->Start(platform_, script_path, port, wait);
-#else
-    return true;
-#endif  // HAVE_INSPECTOR
-  }
-
-  v8::Platform* platform_;
-#else  // !NODE_USE_V8_PLATFORM
-  void Initialize(int thread_pool_size) {}
-  void PumpMessageLoop(Isolate* isolate) {}
-  void Dispose() {}
-  bool StartInspector(Environment *env, const char* script_path,
-                      int port, bool wait) {
-    env->ThrowError("Node compiled with NODE_USE_V8_PLATFORM=0");
-    return false;  // make compiler happy
-  }
-#endif  // !NODE_USE_V8_PLATFORM
-} v8_platform;
-
 #ifdef __POSIX__
 static uv_sem_t debug_semaphore;
 static const unsigned kMaxSignal = 32;
 #endif
+
+V8Platform v8_platform;
+
+void V8Platform::Initialize(int thread_pool_size) {
+#if NODE_USE_V8_PLATFORM
+  platform_ = v8::platform::CreateDefaultPlatform(thread_pool_size);
+  V8::InitializePlatform(platform_);
+#endif  // NODE_USE_V8_PLATFORM
+}
+
+void V8Platform::PumpMessageLoop(Isolate* isolate) {
+#if NODE_USE_V8_PLATFORM
+  v8::platform::PumpMessageLoop(platform_, isolate);
+#endif  // NODE_USE_V8_PLATFORM
+}
+
+void V8Platform::Dispose() {
+#if NODE_USE_V8_PLATFORM
+  delete platform_;
+  platform_ = nullptr;
+#endif  // NODE_USE_V8_PLATFORM
+}
+
+bool V8Platform::StartInspector(Environment *env, const char* script_path,
+                                int port, bool wait) {
+#if HAVE_INSPECTOR && NODE_USE_V8_PLATFORM
+  return env->inspector_agent()->Start(platform_, script_path, port, wait);
+#elif NODE_USE_V8_PLATFORM
+  return true;
+#else
+  env->ThrowError("Node compiled with NODE_USE_V8_PLATFORM=0");
+  return false;
+#endif  // HAVE_INSPECTOR && NODE_USE_V8_PLATFORM
+}
 
 static void PrintErrorString(const char* format, ...) {
   va_list ap;

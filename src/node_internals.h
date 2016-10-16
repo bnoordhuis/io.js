@@ -47,6 +47,25 @@ extern bool v8_initialized;
 // Forward declaration
 class Environment;
 
+class V8Platform {
+ public:
+  inline V8Platform() = default;
+  void Initialize(int thread_pool_size);
+  void PumpMessageLoop(v8::Isolate* isolate);
+  void Dispose();
+  bool StartInspector(Environment *env, const char* script_path,
+                      int port, bool wait);
+
+ private:
+#if NODE_USE_V8_PLATFORM
+  v8::Platform* platform_ = nullptr;
+#endif  // NODE_USE_V8_PLATFORM
+
+  DISALLOW_COPY_AND_ASSIGN(V8Platform);
+};
+
+extern V8Platform v8_platform;
+
 // If persistent.IsWeak() == false, then do not call persistent.Reset()
 // while the returned Local<T> is still in scope, it will destroy the
 // reference to the object.

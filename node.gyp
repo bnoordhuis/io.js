@@ -155,6 +155,7 @@
         'src/node_contextify.cc',
         'src/node_file.cc',
         'src/node_http_parser.cc',
+        'src/node_isolate.cc',
         'src/node_javascript.cc',
         'src/node_main.cc',
         'src/node_os.cc',
