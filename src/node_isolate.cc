@@ -2,6 +2,7 @@
 #include "uv.h"
 #include "v8.h"
 
+#include "async-wrap.h"
 #include "env.h"
 #include "env-inl.h"
 
@@ -105,47 +106,92 @@ inline void RunInThread(void* arg) {
   IsolateData isolate_data(isolate, &event_loop,
                            array_buffer_allocator.zero_fill_field());
 
-  auto context = v8::Context::New(isolate);
-  if (context.IsEmpty()) {
-    fprintf(stderr, "v8::Context::New() failed.\n");
-    fflush(stderr);
-    return;
-  }
-  v8::Context::Scope context_scope(context);
-
-  Environment env(&isolate_data, context);
-  env.Start(cx->argv.size(), cx->argv.elements(),
-            cx->exec_argv.size(), cx->exec_argv.elements(),
-            /* start_profiler_idle_notifier */ false);
   {
-    Environment::AsyncCallbackScope callback_scope(&env);
-    LoadEnvironment(&env);
-  }
+    // We need a new HandleScope here if the ContextDisposedNotification()
+    // call after this block is to have any effect.
+    v8::HandleScope handle_scope(isolate);
+    auto context = v8::Context::New(isolate);
+    if (context.IsEmpty()) {
+      fprintf(stderr, "v8::Context::New() failed.\n");
+      fflush(stderr);
+      return;
+    }
+    v8::Context::Scope context_scope(context);
 
-  // TODO(bnoordhuis) env.set_trace_sync_io(trace_sync_io)
-  {
-    v8::SealHandleScope seal(isolate);
-    bool more;
-    do {
-      v8_platform.PumpMessageLoop(isolate);
-      more = uv_run(env.event_loop(), UV_RUN_ONCE);
+    Environment env(&isolate_data, context);
+    env.Start(cx->argv.size(), cx->argv.elements(),
+              cx->exec_argv.size(), cx->exec_argv.elements(),
+              /* start_profiler_idle_notifier */ false);
+    {
+      Environment::AsyncCallbackScope callback_scope(&env);
+      LoadEnvironment(&env);
+    }
 
-      if (more == false) {
+    // TODO(bnoordhuis) env.set_trace_sync_io(trace_sync_io)
+    {
+      v8::SealHandleScope seal(isolate);
+      bool more;
+      do {
         v8_platform.PumpMessageLoop(isolate);
-        EmitBeforeExit(&env);
+        more = uv_run(env.event_loop(), UV_RUN_ONCE);
 
-        // Emit `beforeExit` if the loop became alive either after emitting
-        // event, or after running some callbacks.
-        more = uv_loop_alive(env.event_loop());
-        if (uv_run(env.event_loop(), UV_RUN_NOWAIT) != 0)
-          more = true;
+        if (more == false) {
+          v8_platform.PumpMessageLoop(isolate);
+          EmitBeforeExit(&env);
+
+          // Emit `beforeExit` if the loop became alive either after emitting
+          // event, or after running some callbacks.
+          more = uv_loop_alive(env.event_loop());
+          if (uv_run(env.event_loop(), UV_RUN_NOWAIT) != 0)
+            more = true;
+        }
+      } while (more == true);
+    }
+    // TODO(bnoordhuis) env.set_trace_sync_io(false)
+
+    cx->exit_code = EmitExit(&env);
+    // TODO(bnoordhuis) RunAtExit(&env)
+
+    // Collect as much garbage as possible before moving to the cleanup phase.
+    isolate->ContextDisposedNotification();
+    isolate->MemoryPressureNotification(v8::MemoryPressureLevel::kCritical);
+
+    struct PersistentHandleVisitor : public v8::PersistentHandleVisitor {
+      virtual void VisitPersistentHandle(v8::Persistent<v8::Value>* value,
+                                         uint16_t class_id) {
+        // TODO(bnoordhuis) Filter by Environment.  We should not
+        // force-kill objects that belong to another Environment.
+        if (class_id == BUFFER_ID) {
+          buffers.push_back(value);
+        } else if (class_id > AsyncWrap::PROVIDER_NONE &&
+                   class_id <= AsyncWrap::PROVIDER_ZLIB) {
+          async_wrap_handles.push_back(value);
+        }
       }
-    } while (more == true);
-  }
-  // TODO(bnoordhuis) env.set_trace_sync_io(false)
+      std::vector<v8::Persistent<v8::Value>*> async_wrap_handles;
+      std::vector<v8::Persistent<v8::Value>*> buffers;
+    };
 
-  cx->exit_code = EmitExit(&env);
-  // TODO(bnoordhuis) RunAtExit(&env)
+    PersistentHandleVisitor persistent_handle_visitor;
+    isolate->VisitHandlesWithClassIds(&persistent_handle_visitor);
+
+    {
+      v8::HandleScope handle_scope(isolate);
+      v8::TryCatch try_catch(isolate);
+      for (auto handle : persistent_handle_visitor.async_wrap_handles) {
+        auto value = PersistentToLocal(isolate, *handle);
+        CHECK(value->IsObject());
+        MakeCallback(&env, value.As<v8::Object>(), "close", 0, nullptr);
+        CHECK_EQ(false, try_catch.HasCaught());
+      }
+    }
+  }
+
+  auto force_close_cb = [] (uv_handle_t* handle, void* /* arg */) {
+    if (!uv_is_closing(handle)) uv_close(handle, nullptr);
+  };
+  uv_walk(&event_loop, force_close_cb, nullptr);
+  CHECK_EQ(0, uv_run(&event_loop, UV_RUN_DEFAULT));
 }
 
 inline void OnClose(uv_handle_t* handle) {

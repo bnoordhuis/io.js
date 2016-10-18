@@ -280,6 +280,7 @@ class NodeInstanceData {
 };
 
 namespace Buffer {
+#define BUFFER_ID 0xB0E4
 v8::MaybeLocal<v8::Object> Copy(Environment* env, const char* data, size_t len);
 v8::MaybeLocal<v8::Object> New(Environment* env, size_t size);
 // Takes ownership of |data|.
