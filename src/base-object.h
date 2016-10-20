@@ -3,6 +3,7 @@
 
 #if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
+#include "util.h"
 #include "v8.h"
 
 namespace node {
@@ -38,12 +39,15 @@ class BaseObject {
   inline void ClearWeak();
 
  private:
+  friend class Environment;
+
   BaseObject();
 
   template <typename Type>
   static inline void WeakCallback(
       const v8::WeakCallbackInfo<Type>& data);
 
+  ListNode<BaseObject> base_object_queue_;
   v8::Persistent<v8::Object> persistent_handle_;
   Environment* env_;
 };

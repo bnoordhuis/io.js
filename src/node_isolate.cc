@@ -3,6 +3,8 @@
 #include "v8.h"
 
 #include "async-wrap.h"
+#include "base-object.h"
+#include "base-object-inl.h"
 #include "env.h"
 #include "env-inl.h"
 
@@ -156,6 +158,25 @@ inline void RunInThread(void* arg) {
     isolate->ContextDisposedNotification();
     isolate->MemoryPressureNotification(v8::MemoryPressureLevel::kCritical);
 
+    env.Stop();  // TODO(bnoordhuis) Better name, maybe PrepareForShutdown()?
+
+    // Prevent calls into the VM from pending callbacks.
+    isolate->TerminateExecution();
+
+#if 0
+    // Forcibly close libuv handles.
+    auto force_close_cb = [] (uv_handle_t* handle, void* /* arg */) {
+      if (!uv_is_closing(handle)) uv_close(handle, nullptr);
+    };
+    uv_walk(&event_loop, force_close_cb, nullptr);
+    CHECK_EQ(0, uv_run(&event_loop, UV_RUN_DEFAULT));
+
+    // Now clean up persistent objects that have resources attached to them.
+    while (!env.base_object_queue()->IsEmpty()) {
+      delete env.base_object_queue()->PopFront();
+    }
+#endif
+
     struct PersistentHandleVisitor : public v8::PersistentHandleVisitor {
       virtual void VisitPersistentHandle(v8::Persistent<v8::Value>* value,
                                          uint16_t class_id) {
@@ -178,20 +199,39 @@ inline void RunInThread(void* arg) {
     {
       v8::HandleScope handle_scope(isolate);
       v8::TryCatch try_catch(isolate);
+      auto c_callback = [] (const v8::FunctionCallbackInfo<v8::Value>& info) {
+        CHECK(info.Data()->IsExternal());
+        auto pointer = info.Data().As<v8::External>()->Value();
+        auto async_wrap_handles_count = static_cast<unsigned*>(pointer);
+        *async_wrap_handles_count -= 1;
+      };
+      unsigned async_wrap_handles_count = 0;
+      auto data = v8::External::New(isolate, &async_wrap_handles_count);
+      auto callback =
+          v8::Function::New(context, c_callback, data)
+          .ToLocalChecked()
+          .As<v8::Value>();
       for (auto handle : persistent_handle_visitor.async_wrap_handles) {
         auto value = PersistentToLocal(isolate, *handle);
         CHECK(value->IsObject());
-        MakeCallback(&env, value.As<v8::Object>(), "close", 0, nullptr);
+        MakeCallback(&env, value.As<v8::Object>(), "close", 1, &callback);
         CHECK_EQ(false, try_catch.HasCaught());
+        async_wrap_handles_count += 1;
       }
+      CHECK_EQ(0, uv_run(&event_loop, UV_RUN_DEFAULT));
+      uv_print_all_handles(&event_loop, stderr);
+      CHECK_EQ(0, async_wrap_handles_count);
     }
   }
 
+  uv_print_all_handles(&event_loop, stderr);
+#if 0
   auto force_close_cb = [] (uv_handle_t* handle, void* /* arg */) {
     if (!uv_is_closing(handle)) uv_close(handle, nullptr);
   };
   uv_walk(&event_loop, force_close_cb, nullptr);
   CHECK_EQ(0, uv_run(&event_loop, UV_RUN_DEFAULT));
+#endif
 }
 
 inline void OnClose(uv_handle_t* handle) {

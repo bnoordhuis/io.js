@@ -32,6 +32,8 @@ void Environment::Start(int argc,
 
   isolate()->SetAutorunMicrotasks(false);
 
+  uv_timer_init(event_loop(), cares_timer_handle());
+
   uv_check_init(event_loop(), immediate_check_handle());
   uv_unref(reinterpret_cast<uv_handle_t*>(immediate_check_handle()));
 
@@ -51,31 +53,6 @@ void Environment::Start(int argc,
   uv_unref(reinterpret_cast<uv_handle_t*>(&idle_prepare_handle_));
   uv_unref(reinterpret_cast<uv_handle_t*>(&idle_check_handle_));
 
-  auto close_and_finish = [](Environment* env, uv_handle_t* handle, void* arg) {
-    handle->data = env;
-
-    uv_close(handle, [](uv_handle_t* handle) {
-      static_cast<Environment*>(handle->data)->FinishHandleCleanup(handle);
-    });
-  };
-
-  RegisterHandleCleanup(
-      reinterpret_cast<uv_handle_t*>(immediate_check_handle()),
-      close_and_finish,
-      nullptr);
-  RegisterHandleCleanup(
-      reinterpret_cast<uv_handle_t*>(immediate_idle_handle()),
-      close_and_finish,
-      nullptr);
-  RegisterHandleCleanup(
-      reinterpret_cast<uv_handle_t*>(&idle_prepare_handle_),
-      close_and_finish,
-      nullptr);
-  RegisterHandleCleanup(
-      reinterpret_cast<uv_handle_t*>(&idle_check_handle_),
-      close_and_finish,
-      nullptr);
-
   if (start_profiler_idle_notifier) {
     StartProfilerIdleNotifier();
   }
@@ -89,6 +66,14 @@ void Environment::Start(int argc,
 
   SetupProcessObject(this, argc, argv, exec_argc, exec_argv);
   LoadAsyncWrapperInfo(this);
+}
+
+void Environment::Stop() {
+  uv_close(reinterpret_cast<uv_handle_t*>(cares_timer_handle()), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(immediate_check_handle()), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(immediate_idle_handle()), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(&idle_prepare_handle_), nullptr);
+  uv_close(reinterpret_cast<uv_handle_t*>(&idle_check_handle_), nullptr);
 }
 
 void Environment::StartProfilerIdleNotifier() {

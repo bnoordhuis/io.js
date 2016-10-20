@@ -4,6 +4,7 @@
 #if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
 #include "ares.h"
+#include "base-object.h"
 #include "debug-agent.h"
 #if HAVE_INSPECTOR
 #include "inspector_agent.h"
@@ -382,26 +383,6 @@ class Environment {
     DISALLOW_COPY_AND_ASSIGN(TickInfo);
   };
 
-  typedef void (*HandleCleanupCb)(Environment* env,
-                                  uv_handle_t* handle,
-                                  void* arg);
-
-  class HandleCleanup {
-   private:
-    friend class Environment;
-
-    HandleCleanup(uv_handle_t* handle, HandleCleanupCb cb, void* arg)
-        : handle_(handle),
-          cb_(cb),
-          arg_(arg) {
-    }
-
-    uv_handle_t* handle_;
-    HandleCleanupCb cb_;
-    void* arg_;
-    ListNode<HandleCleanup> handle_cleanup_queue_;
-  };
-
   static inline Environment* GetCurrent(v8::Isolate* isolate);
   static inline Environment* GetCurrent(v8::Local<v8::Context> context);
   static inline Environment* GetCurrent(
@@ -420,6 +401,7 @@ class Environment {
              const char* const* exec_argv,
              bool start_profiler_idle_notifier);
   void AssignToContext(v8::Local<v8::Context> context);
+  void Stop();
 
   void StartProfilerIdleNotifier();
   void StopProfilerIdleNotifier();
@@ -433,12 +415,6 @@ class Environment {
   static inline Environment* from_immediate_check_handle(uv_check_t* handle);
   inline uv_check_t* immediate_check_handle();
   inline uv_idle_t* immediate_idle_handle();
-
-  // Register clean-up cb to be called on environment destruction.
-  inline void RegisterHandleCleanup(uv_handle_t* handle,
-                                    HandleCleanupCb cb,
-                                    void *arg);
-  inline void FinishHandleCleanup(uv_handle_t* handle);
 
   inline AsyncHooks* async_hooks();
   inline DomainFlag* domain_flag();
@@ -531,10 +507,12 @@ class Environment {
   }
 #endif
 
+  typedef ListHead<BaseObject, &BaseObject::base_object_queue_> BaseObjectQueue;
   typedef ListHead<HandleWrap, &HandleWrap::handle_wrap_queue_> HandleWrapQueue;
   typedef ListHead<ReqWrap<uv_req_t>, &ReqWrap<uv_req_t>::req_wrap_queue_>
           ReqWrapQueue;
 
+  inline BaseObjectQueue* base_object_queue() { return &base_object_queue_; }
   inline HandleWrapQueue* handle_wrap_queue() { return &handle_wrap_queue_; }
   inline ReqWrapQueue* req_wrap_queue() { return &req_wrap_queue_; }
 
@@ -567,11 +545,9 @@ class Environment {
   inspector::Agent inspector_agent_;
 #endif
 
+  BaseObjectQueue base_object_queue_;
   HandleWrapQueue handle_wrap_queue_;
   ReqWrapQueue req_wrap_queue_;
-  ListHead<HandleCleanup,
-           &HandleCleanup::handle_cleanup_queue_> handle_cleanup_queue_;
-  int handle_cleanup_waiting_;
 
   uint32_t* heap_statistics_buffer_ = nullptr;
   uint32_t* heap_space_statistics_buffer_ = nullptr;
