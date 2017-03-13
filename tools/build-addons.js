@@ -1,7 +1,8 @@
 'use strict';
 
 const fs = require('fs');
-const { spawnSync } = require('child_process');
+const os = require('os');
+const { spawn, spawnSync } = require('child_process');
 const { resolve } = require('path');
 
 const kTopLevelDirectory = resolve(__dirname, '..');
@@ -28,6 +29,11 @@ process.chdir(kTopLevelDirectory);
 require('./doc/addon-verify.js');
 
 // Regenerate build files and rebuild if necessary.
+let failures = 0;
+process.on('exit', () => process.exit(failures > 0));
+
+const jobs = [];
+
 for (const basedir of fs.readdirSync(kAddonsDirectory)) {
   const path = resolve(kAddonsDirectory, basedir);
   if (!fs.statSync(path).isDirectory()) continue;
@@ -35,21 +41,39 @@ for (const basedir of fs.readdirSync(kAddonsDirectory)) {
   const gypfile = resolve(path, 'binding.gyp');
   if (!fs.existsSync(gypfile)) continue;
 
-  const args = [ kNodeGyp,
-                 '--directory=' + path,
-                 '--loglevel=silent',
-                 '--nodedir=' + kAddonsDirectory,
-                 '--python=' + kPython ];
-  const env = Object.assign({}, process.env);
-  env.MAKEFLAGS = '-j1';
+  exec(path, 'configure', () => exec(path, 'build'));
+}
 
-  const options = { env, stdio: 'inherit' };
-  {
-    const proc = spawnSync(process.execPath, args.concat('configure'), options);
-    if (proc.status !== 0) process.exit(1);
-  }
-  {
-    const proc = spawnSync(process.execPath, args.concat('build'), options);
-    if (proc.status !== 0) process.exit(1);
-  }
+for (const _ of os.cpus()) next();
+
+function next() {
+  const job = jobs.shift();
+  if (job) job();
+}
+
+function exec(path, command, done) {
+  jobs.push(() => {
+    if (failures > 0) return;
+
+    const args = [kNodeGyp,
+                  '--directory=' + path,
+                  '--loglevel=silent',
+                  '--nodedir=' + kAddonsDirectory,
+                  '--python=' + kPython,
+                  command];
+
+    const env = Object.assign({}, process.env);
+    env.MAKEFLAGS = '-j1';
+
+    const options = { env, stdio: 'inherit' };
+    const proc = spawn(process.execPath, args, options);
+
+    proc.on('exit', (exitCode) => {
+      if (exitCode !== 0) ++failures;
+      if (done) done();
+      next();
+    });
+
+    console.log(command, path);
+  });
 }
