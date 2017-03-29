@@ -161,8 +161,6 @@ class AgentImpl {
   static void WriteCbIO(uv_async_t* async);
   static void MainThreadAsyncCb(uv_async_t* req);
 
-  void InstallInspectorOnProcess();
-
   void WorkerRunIO();
   void SetConnected(bool connected);
   void DispatchMessages();
@@ -422,7 +420,8 @@ bool AgentImpl::Start(v8::Platform* platform, const char* path,
   if (path != nullptr)
     script_name_ = path;
 
-  InstallInspectorOnProcess();
+  env->SetMethod(env->binding_object(), "inspectorWrapConsoleCall",
+                 InspectorWrapConsoleCall);
 
   int err = uv_thread_create(&thread_, AgentImpl::ThreadCbIO, this);
   CHECK_EQ(err, 0);
@@ -461,22 +460,6 @@ void AgentImpl::WaitForDisconnect() {
     fflush(stderr);
     inspector_->runMessageLoopOnPause(0);
   }
-}
-
-#define READONLY_PROPERTY(obj, str, var)                                      \
-  do {                                                                        \
-    obj->DefineOwnProperty(env->context(),                                    \
-                           OneByteString(env->isolate(), str),                \
-                           var,                                               \
-                           v8::ReadOnly).FromJust();                          \
-  } while (0)
-
-void AgentImpl::InstallInspectorOnProcess() {
-  auto env = parent_env_;
-  v8::Local<v8::Object> process = env->process_object();
-  v8::Local<v8::Object> inspector = v8::Object::New(env->isolate());
-  READONLY_PROPERTY(process, "inspector", inspector);
-  env->SetMethod(inspector, "wrapConsoleCall", InspectorWrapConsoleCall);
 }
 
 std::unique_ptr<StringBuffer> ToProtocolString(v8::Local<v8::Value> value) {
