@@ -86,7 +86,10 @@
 #include <vector>
 
 #if defined(NODE_HAVE_I18N_SUPPORT)
-#include <unicode/uvernum.h>
+#include <unicode/timezone.h>   // TimeZone::getTZDataVersion()
+#include <unicode/uchar.h>      // U_UNICODE_VERSION
+#include <unicode/ulocdata.h>   // ulocdata_getCLDRVersion()
+#include <unicode/uvernum.h>    // U_ICU_VERSION
 #endif
 
 #if defined(LEAK_SANITIZER)
@@ -3042,6 +3045,59 @@ void StopProfilerIdleNotifier(const FunctionCallbackInfo<Value>& args) {
 }
 
 
+inline void SetupBindingObject(Local<Object> object) {
+  auto context = object->CreationContext();
+  auto isolate = context->GetIsolate();
+
+  // --debug-brk
+  object->Set(context,
+              FIXED_ONE_BYTE_STRING(isolate, "debugWaitConnect"),
+              Boolean::New(isolate, debug_options.wait_for_connect()))
+      .FromJust();
+
+#ifdef NODE_HAVE_I18N_SUPPORT
+  const bool has_intl = true;
+#else
+  const bool has_intl = false;
+#endif  // NODE_HAVE_I18N_SUPPORT
+
+  object->Set(context,
+              FIXED_ONE_BYTE_STRING(isolate, "hasIntl"),
+              Boolean::New(isolate, has_intl)).FromJust();
+
+#ifdef NODE_HAVE_I18N_SUPPORT
+  object->Set(context,
+              FIXED_ONE_BYTE_STRING(isolate, "icuVersion"),
+              FIXED_ONE_BYTE_STRING(isolate, U_ICU_VERSION)).FromJust();
+
+  object->Set(context,
+              FIXED_ONE_BYTE_STRING(isolate, "unicodeVersion"),
+              FIXED_ONE_BYTE_STRING(isolate, U_UNICODE_VERSION)).FromJust();
+
+  UVersionInfo cldr_versions;
+  UErrorCode cldr_status = U_ZERO_ERROR;
+  ulocdata_getCLDRVersion(cldr_versions, &cldr_status);
+
+  if (U_SUCCESS(cldr_status)) {
+    char cldr_version[U_MAX_VERSION_STRING_LENGTH];
+    u_versionToString(cldr_versions, cldr_version);
+    object->Set(context,
+                FIXED_ONE_BYTE_STRING(isolate, "cldrVersion"),
+                OneByteString(isolate, cldr_version)).FromJust();
+  }
+
+  UErrorCode tzdata_status = U_ZERO_ERROR;
+  const char* tzdata_version = TimeZone::getTZDataVersion(tzdata_status);
+
+  if (U_SUCCESS(tzdata_status) && tzdata_version != nullptr) {
+    object->Set(context,
+                FIXED_ONE_BYTE_STRING(isolate, "tzdataVersion"),
+                OneByteString(isolate, tzdata_version)).FromJust();
+  }
+#endif  // NODE_HAVE_I18N_SUPPORT
+}
+
+
 #define READONLY_PROPERTY(obj, str, var)                                      \
   do {                                                                        \
     obj->DefineOwnProperty(env->context(),                                    \
@@ -3067,8 +3123,8 @@ void SetupProcessObject(Environment* env,
                         int exec_argc,
                         const char* const* exec_argv) {
   HandleScope scope(env->isolate());
+  SetupBindingObject(env->binding_object());
 
-  Local<Object> binding_object = env->binding_object();
   Local<Object> process = env->process_object();
 
   auto title_string = FIXED_ONE_BYTE_STRING(env->isolate(), "title");
@@ -3316,13 +3372,6 @@ void SetupProcessObject(Environment* env,
   if (trace_deprecation) {
     READONLY_PROPERTY(process, "traceDeprecation", True(env->isolate()));
   }
-
-  // --debug-brk
-  binding_object->Set(env->context(),
-                      FIXED_ONE_BYTE_STRING(env->isolate(), "debugWaitConnect"),
-                      Boolean::New(env->isolate(),
-                                   debug_options.wait_for_connect()))
-    .FromJust();
 
   // --security-revert flags
 #define V(code, _, __)                                                        \
