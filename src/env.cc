@@ -19,6 +19,7 @@ using v8::FunctionTemplate;
 using v8::HandleScope;
 using v8::Local;
 using v8::Message;
+using v8::Object;
 using v8::StackFrame;
 using v8::StackTrace;
 
@@ -80,6 +81,8 @@ void Environment::Start(int argc,
   if (start_profiler_idle_notifier) {
     StartProfilerIdleNotifier();
   }
+
+  set_binding_object(Object::New(isolate()));
 
   auto process_template = FunctionTemplate::New(isolate());
   process_template->SetClassName(FIXED_ONE_BYTE_STRING(isolate(), "process"));

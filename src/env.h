@@ -251,6 +251,7 @@ namespace node {
   V(async_hooks_init_function, v8::Function)                                  \
   V(async_hooks_post_function, v8::Function)                                  \
   V(async_hooks_pre_function, v8::Function)                                   \
+  V(binding_object, v8::Object)                                               \
   V(binding_cache_object, v8::Object)                                         \
   V(buffer_constructor_function, v8::Function)                                \
   V(buffer_prototype_object, v8::Object)                                      \
