@@ -275,6 +275,8 @@ void CpuProfiler::set_sampling_interval(base::TimeDelta value) {
 void CpuProfiler::ResetProfiles() {
   profiles_.reset(new CpuProfilesCollection(isolate_));
   profiles_->set_cpu_profiler(this);
+  Logger* logger = isolate_->logger();
+  logger->profiler_listener_.reset();
 }
 
 void CpuProfiler::CreateEntriesForRuntimeCallStats() {
