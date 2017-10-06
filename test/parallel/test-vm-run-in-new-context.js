@@ -73,3 +73,13 @@ const fn = vm.runInNewContext('(function() { obj.p = {}; })', { obj: {} });
 global.gc();
 fn();
 // Should not crash
+
+// https://github.com/nodejs/node/issues/14757 - vm.runInNewContext() should
+// use the last entered context, not the context that vm.runInNewContext()
+// belongs to (which is the top level context.)
+{
+  const [that0, that1] =
+      vm.runInNewContext('[this, runInThisContext("this")]', vm);
+  assert.strictEqual(that0, that1);
+  assert.notEqual(that0, global);
+}

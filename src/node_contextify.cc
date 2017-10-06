@@ -652,7 +652,10 @@ class ContextifyScript : public BaseObject {
     bool display_errors = maybe_display_errors.ToChecked();
     bool break_on_sigint = maybe_break_on_sigint.ToChecked();
 
-    // Do the eval within this context
+    auto context = args.GetIsolate()->GetEnteredContext();
+    if (context.IsEmpty()) context = env->context();
+    Context::Scope context_scope(context);
+
     EvalMachine(env, timeout, display_errors, break_on_sigint, args,
                 &try_catch);
   }

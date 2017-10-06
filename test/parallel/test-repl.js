@@ -456,7 +456,11 @@ function tcp_test() {
           expect: (`12346\n${prompt_tcp}`) },
         { client: client_tcp,
           send: `require(${JSON.stringify(moduleFilename)}).number`,
-          expect: (`42\n${prompt_tcp}`) }
+          expect: (`load fixtures/b/d.js\n` +
+                   `load package/index.js\n` +
+                   `load fixtures/b/c.js\n` +
+                   `load fixtures/a.js\n` +
+                   `42\n${prompt_tcp}`) }
       ]);
     });
 

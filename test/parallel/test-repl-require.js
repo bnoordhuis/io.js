@@ -30,5 +30,6 @@ server.listen(options, function() {
 process.on('exit', function() {
   assert.strictEqual(false, /Cannot find module/.test(answer));
   assert.strictEqual(false, /Error/.test(answer));
-  assert.strictEqual(answer, '\'eye catcher\'\n\'perhaps I work\'\n');
+  assert(answer.includes('\'eye catcher\'\n\'perhaps I work\'\n'));
+  assert(answer.includes('node_modules'));  // Printed by the loaded modules.
 });
