@@ -240,7 +240,7 @@ def Render(var, data):
   return template.format(var=var, data=data)
 
 
-def JS2C(source, target):
+def JS2C(base, source, target):
   modules = []
   consts = {}
   macros = {}
@@ -268,6 +268,10 @@ def JS2C(source, target):
 
     # On Windows, "./foo.bar" in the .gyp file is passed as "foo.bar"
     # so don't assume there is always a slash in the file path.
+    if base:
+      assert name.startswith(base)
+      name = name[1+len(base):]
+
     if '/' in name or '\\' in name:
       split = re.split('/|\\\\', name)
       if split[0] == 'deps':
@@ -305,9 +309,10 @@ def JS2C(source, target):
   output.close()
 
 def main():
-  natives = sys.argv[1]
-  source_files = sys.argv[2:]
-  JS2C(source_files, [natives])
+  base = sys.argv[1]
+  natives = sys.argv[2]
+  source_files = sys.argv[3:]
+  JS2C(base, source_files, [natives])
 
 if __name__ == "__main__":
   main()

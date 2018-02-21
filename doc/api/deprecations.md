@@ -378,9 +378,10 @@ instead.
 <a id="DEP0041"></a>
 ### DEP0041: NODE\_REPL\_HISTORY\_FILE environment variable
 
-Type: Documentation-only
+Type: End-of-life
 
-The `NODE_REPL_HISTORY_FILE` environment variable has been deprecated.
+The `NODE_REPL_HISTORY_FILE` environment variable was removed. Please use
+`NODE_REPL_HISTORY` instead.
 
 <a id="DEP0042"></a>
 ### DEP0042: tls.CryptoStream
@@ -544,8 +545,8 @@ Type: Documentation-only
 The `http` module `ServerResponse.prototype.writeHeader()` API has been
 deprecated. Please use `ServerResponse.prototype.writeHead()` instead.
 
-*Note*: The `ServerResponse.prototype.writeHeader()` method was never
-documented as an officially supported API.
+The `ServerResponse.prototype.writeHeader()` method was never documented as an
+officially supported API.
 
 <a id="DEP0064"></a>
 ### DEP0064: tls.createSecurePair()
@@ -581,8 +582,8 @@ properties have been deprecated. Please instead use one of the public methods
 `outgoingMessage.removeHeader()`, `outgoingMessage.setHeader()`) for working
 with outgoing headers.
 
-*Note*: `outgoingMessage._headers` and `outgoingMessage._headerNames` were
-never documented as officially supported properties.
+The `outgoingMessage._headers` and `outgoingMessage._headerNames` properties
+were never documented as officially supported properties.
 
 <a id="DEP0067"></a>
 ### DEP0067: OutgoingMessage.prototype.\_renderHeaders
@@ -592,7 +593,7 @@ Type: Documentation-only
 The `http` module `OutgoingMessage.prototype._renderHeaders()` API has been
 deprecated.
 
-*Note*: `OutgoingMessage.prototype._renderHeaders` was never documented as
+The `OutgoingMessage.prototype._renderHeaders` property was never documented as
 an officially supported API.
 
 <a id="DEP0068"></a>
@@ -610,7 +611,7 @@ Type: End-of-Life
 
 DebugContext has been removed in V8 and is not available in Node 10+.
 
-*Note*: DebugContext was an experimental API.
+DebugContext was an experimental API.
 
 <a id="DEP0070"></a>
 ### DEP0070: async_hooks.currentId()
@@ -620,7 +621,7 @@ Type: End-of-Life
 `async_hooks.currentId()` was renamed to `async_hooks.executionAsyncId()` for
 clarity.
 
-*Note*: change was made while `async_hooks` was an experimental API.
+This change was made while `async_hooks` was an experimental API.
 
 <a id="DEP0071"></a>
 ### DEP0071: async_hooks.triggerId()
@@ -630,7 +631,7 @@ Type: End-of-Life
 `async_hooks.triggerId()` was renamed to `async_hooks.triggerAsyncId()` for
 clarity.
 
-*Note*: change was made while `async_hooks` was an experimental API.
+This change was made while `async_hooks` was an experimental API.
 
 <a id="DEP0072"></a>
 ### DEP0072: async_hooks.AsyncResource.triggerId()
@@ -640,7 +641,7 @@ Type: End-of-Life
 `async_hooks.AsyncResource.triggerId()` was renamed to
 `async_hooks.AsyncResource.triggerAsyncId()` for clarity.
 
-*Note*: change was made while `async_hooks` was an experimental API.
+This change was made while `async_hooks` was an experimental API.
 
 <a id="DEP0073"></a>
 ### DEP0073: Several internal properties of net.Server
@@ -650,8 +651,8 @@ Type: End-of-Life
 Accessing several internal, undocumented properties of `net.Server` instances
 with inappropriate names has been deprecated.
 
-*Note*: As the original API was undocumented and not generally useful for
-non-internal code, no replacement API is provided.
+As the original API was undocumented and not generally useful for non-internal
+code, no replacement API is provided.
 
 <a id="DEP0074"></a>
 ### DEP0074: REPLServer.bufferedCommand
@@ -681,7 +682,7 @@ const querystring = require('querystring');
 querystring.parse(str, '\n', '=');
 ```
 
-*Note*: This function is not completely equivalent to `querystring.parse()`. One
+This function is not completely equivalent to `querystring.parse()`. One
 difference is that `querystring.parse()` does url decoding:
 
 ```sh
@@ -698,7 +699,7 @@ Type: Runtime
 
 `Module._debug()` has been deprecated.
 
-*Note*: `Module._debug()` was never documented as an officially supported API.
+The `Module._debug()` function   was never documented as an officially supported API.
 
 <a id="DEP0078"></a>
 ### DEP0078: REPLServer.turnOffEditorMode()
@@ -871,11 +872,51 @@ Type: Runtime
 
 `timers.unenroll()` is deprecated. Please use the publicly documented [`clearTimeout()`][] or [`clearInterval()`][] instead.
 
+<a id="DEP0097"></a>
+### DEP0097: MakeCallback with domain property
+
+Type: Runtime
+
+Users of `MakeCallback` that add the `domain` property to carry context,
+should start using the `async_context` variant of `MakeCallback` or
+`CallbackScope`, or the the high-level `AsyncResource` class.
+
+<a id="DEP0098"></a>
+### DEP0098: AsyncHooks Embedder AsyncResource.emit{Before,After} APIs
+
+Type: Runtime
+
+The embedded API provided by AsyncHooks exposes emit{Before,After} methods
+which are very easy to use incorrectly which can lead to unrecoverable errors.
+
+Use [`asyncResource.runInAsyncScope()`][] API instead which provides a much
+safer, and more convenient, alternative. See
+https://github.com/nodejs/node/pull/18513 for more details.
+
+<a id="DEP0099"></a>
+### DEP0099: async context-unaware node::MakeCallback C++ APIs
+
+Type: Compile-time
+
+Certain versions of `node::MakeCallback` APIs available to native modules are
+deprecated. Please use the versions of the API that accept an `async_context`
+parameter.
+
+<a id="DEP0100"></a>
+### DEP0100: process.assert()
+
+Type: Runtime
+
+`process.assert()` is deprecated. Please use the [`assert`][] module instead.
+
+This was never a documented feature.
+
 [`--pending-deprecation`]: cli.html#cli_pending_deprecation
 [`Buffer.allocUnsafeSlow(size)`]: buffer.html#buffer_class_method_buffer_allocunsafeslow_size
 [`Buffer.from(array)`]: buffer.html#buffer_class_method_buffer_from_array
 [`Buffer.from(buffer)`]: buffer.html#buffer_class_method_buffer_from_buffer
 [`Buffer.isBuffer()`]: buffer.html#buffer_class_method_buffer_isbuffer_obj
+[`assert`]: assert.html
 [`clearInterval()`]: timers.html#timers_clearinterval_timeout
 [`clearTimeout()`]: timers.html#timers_cleartimeout_timeout
 [`EventEmitter.listenerCount(emitter, eventName)`]: events.html#events_eventemitter_listenercount_emitter_eventname
@@ -883,6 +924,7 @@ Type: Runtime
 [`Server.getConnections()`]: net.html#net_server_getconnections_callback
 [`Server.listen({fd: <number>})`]: net.html#net_server_listen_handle_backlog_callback
 [`SlowBuffer`]: buffer.html#buffer_class_slowbuffer
+[`asyncResource.runInAsyncScope()`]: async_hooks.html#async_hooks_asyncresource_runinasyncscope_fn_thisarg_args
 [`child_process`]: child_process.html
 [`console.error()`]: console.html#console_console_error_data_args
 [`console.log()`]: console.html#console_console_log_data_args

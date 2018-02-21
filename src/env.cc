@@ -11,13 +11,16 @@ namespace node {
 using v8::Context;
 using v8::FunctionTemplate;
 using v8::HandleScope;
+using v8::Integer;
 using v8::Isolate;
 using v8::Local;
 using v8::Message;
+using v8::Number;
 using v8::Private;
 using v8::StackFrame;
 using v8::StackTrace;
 using v8::String;
+using v8::Value;
 
 IsolateData::IsolateData(Isolate* isolate,
                          uv_loop_t* event_loop,
@@ -75,6 +78,11 @@ v8::CpuProfiler* IsolateData::GetCpuProfiler() {
   cpu_profiler_ = v8::CpuProfiler::New(isolate());
   CHECK_NE(cpu_profiler_, nullptr);
   return cpu_profiler_;
+}
+
+
+void InitThreadLocalOnce() {
+  CHECK_EQ(0, uv_key_create(&Environment::thread_local_env));
 }
 
 void Environment::Start(int argc,
@@ -144,6 +152,10 @@ void Environment::Start(int argc,
 
   SetupProcessObject(this, argc, argv, exec_argc, exec_argv);
   LoadAsyncWrapperInfo(this);
+
+  static uv_once_t init_once = UV_ONCE_INIT;
+  uv_once(&init_once, InitThreadLocalOnce);
+  uv_key_set(&thread_local_env, this);
 }
 
 void Environment::CleanupHandles() {
@@ -362,6 +374,18 @@ void Environment::ToggleImmediateRef(bool ref) {
 }
 
 
+Local<Value> Environment::GetNow() {
+  uv_update_time(event_loop());
+  uint64_t now = uv_now(event_loop());
+  CHECK_GE(now, timer_base());
+  now -= timer_base();
+  if (now <= 0xffffffff)
+    return Integer::New(isolate(), static_cast<uint32_t>(now));
+  else
+    return Number::New(isolate(), static_cast<double>(now));
+}
+
+
 void CollectExceptionInfo(Environment* env,
                           v8::Local<v8::Object> obj,
                           int errorno,
@@ -455,5 +479,7 @@ void Environment::AsyncHooks::grow_async_ids_stack() {
       env()->async_ids_stack_string(),
       async_ids_stack_.GetJSArray()).FromJust();
 }
+
+uv_key_t Environment::thread_local_env = {};
 
 }  // namespace node

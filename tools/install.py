@@ -13,6 +13,7 @@ node_prefix = '/usr/local' # PREFIX variable from Makefile
 install_path = None # base target directory (DESTDIR + PREFIX from Makefile)
 target_defaults = None
 variables = None
+cmake = False
 
 def abspath(*args):
   path = os.path.join(*args)
@@ -119,7 +120,7 @@ def subdir_files(path, dest, action):
 def files(action):
   is_windows = sys.platform == 'win32'
   output_file = 'node'
-  output_prefix = 'out/Release/'
+  output_prefix = 'out.cmake/cmake/node/' if cmake else 'out/Release/'
 
   if 'false' == variables.get('node_shared'):
     if is_windows:
@@ -131,7 +132,7 @@ def files(action):
       output_file = 'lib' + output_file + '.' + variables.get('shlib_suffix')
       # GYP will output to lib.target except on OS X, this is hardcoded
       # in its source - see the _InstallableTargetInstallPath function.
-      if sys.platform != 'darwin':
+      if not cmake and sys.platform != 'darwin':
         output_prefix += 'lib.target/'
 
   if 'false' == variables.get('node_shared'):
@@ -224,4 +225,7 @@ def run(args):
   raise RuntimeError('Bad command: %s\n' % cmd)
 
 if __name__ == '__main__':
+  if '--cmake' in sys.argv:
+    sys.argv = [arg for arg in sys.argv if arg != '--cmake']
+    cmake = True
   run(sys.argv[:])

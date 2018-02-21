@@ -1,0 +1,1748 @@
+include(../common.cmake)
+project(v8)
+
+add_subdirectory(libbase)
+
+set(BASE ${CMAKE_SOURCE_DIR}/deps/v8)
+
+set(DEFINES
+    -DV8_CONCURRENT_MARKING
+    -DENABLE_DISASSEMBLER
+    -DOBJECT_PRINT
+    -DV8_TYPED_ARRAY_MAX_SIZE_IN_HEAP=0)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(DEFINES ${DEFINES}
+      -DDEBUG
+      -DENABLE_SLOW_DCHECKS
+      -DV8_ENABLE_CHECKS
+      -DV8_TRACE_MAPS
+      -DVERIFY_HEAP)
+endif()
+
+if(v8_embedder_string)
+  set(DEFINES ${DEFINES} -DV8_EMBEDDER_STRING="${v8_embedder_string}")
+endif()
+
+set(INITIALIZERS_SOURCES
+    ${BASE}/src/builtins/builtins-arguments-gen.cc
+    ${BASE}/src/builtins/builtins-arguments-gen.h
+    ${BASE}/src/builtins/builtins-array-gen.cc
+    ${BASE}/src/builtins/builtins-async-function-gen.cc
+    ${BASE}/src/builtins/builtins-async-gen.cc
+    ${BASE}/src/builtins/builtins-async-gen.h
+    ${BASE}/src/builtins/builtins-async-generator-gen.cc
+    ${BASE}/src/builtins/builtins-async-iterator-gen.cc
+    ${BASE}/src/builtins/builtins-boolean-gen.cc
+    ${BASE}/src/builtins/builtins-call-gen.cc
+    ${BASE}/src/builtins/builtins-call-gen.h
+    ${BASE}/src/builtins/builtins-collections-gen.cc
+    ${BASE}/src/builtins/builtins-console-gen.cc
+    ${BASE}/src/builtins/builtins-constructor-gen.cc
+    ${BASE}/src/builtins/builtins-constructor-gen.h
+    ${BASE}/src/builtins/builtins-constructor.h
+    ${BASE}/src/builtins/builtins-conversion-gen.cc
+    ${BASE}/src/builtins/builtins-date-gen.cc
+    ${BASE}/src/builtins/builtins-debug-gen.cc
+    ${BASE}/src/builtins/builtins-function-gen.cc
+    ${BASE}/src/builtins/builtins-generator-gen.cc
+    ${BASE}/src/builtins/builtins-global-gen.cc
+    ${BASE}/src/builtins/builtins-handler-gen.cc
+    ${BASE}/src/builtins/builtins-ic-gen.cc
+    ${BASE}/src/builtins/builtins-internal-gen.cc
+    ${BASE}/src/builtins/builtins-interpreter-gen.cc
+    ${BASE}/src/builtins/builtins-iterator-gen.cc
+    ${BASE}/src/builtins/builtins-iterator-gen.h
+    ${BASE}/src/builtins/builtins-math-gen.cc
+    ${BASE}/src/builtins/builtins-math-gen.h
+    ${BASE}/src/builtins/builtins-number-gen.cc
+    ${BASE}/src/builtins/builtins-object-gen.cc
+    ${BASE}/src/builtins/builtins-promise-gen.cc
+    ${BASE}/src/builtins/builtins-promise-gen.h
+    ${BASE}/src/builtins/builtins-proxy-gen.cc
+    ${BASE}/src/builtins/builtins-proxy-gen.h
+    ${BASE}/src/builtins/builtins-reflect-gen.cc
+    ${BASE}/src/builtins/builtins-regexp-gen.cc
+    ${BASE}/src/builtins/builtins-regexp-gen.h
+    ${BASE}/src/builtins/builtins-sharedarraybuffer-gen.cc
+    ${BASE}/src/builtins/builtins-string-gen.cc
+    ${BASE}/src/builtins/builtins-string-gen.h
+    ${BASE}/src/builtins/builtins-symbol-gen.cc
+    ${BASE}/src/builtins/builtins-typedarray-gen.cc
+    ${BASE}/src/builtins/builtins-utils-gen.h
+    ${BASE}/src/builtins/builtins-wasm-gen.cc
+    ${BASE}/src/builtins/setup-builtins-internal.cc
+    ${BASE}/src/heap/setup-heap-internal.cc
+    ${BASE}/src/ic/accessor-assembler.cc
+    ${BASE}/src/ic/accessor-assembler.h
+    ${BASE}/src/ic/binary-op-assembler.cc
+    ${BASE}/src/ic/binary-op-assembler.h
+    ${BASE}/src/ic/keyed-store-generic.cc
+    ${BASE}/src/ic/keyed-store-generic.h
+    ${BASE}/src/interpreter/interpreter-assembler.cc
+    ${BASE}/src/interpreter/interpreter-assembler.h
+    ${BASE}/src/interpreter/interpreter-generator.cc
+    ${BASE}/src/interpreter/interpreter-generator.h
+    ${BASE}/src/interpreter/interpreter-intrinsics-generator.cc
+    ${BASE}/src/interpreter/interpreter-intrinsics-generator.h
+    ${BASE}/src/interpreter/setup-interpreter-internal.cc
+    ${BASE}/src/interpreter/setup-interpreter.h)
+
+set(SOURCES
+    ${BASE}/include/v8-debug.h
+    ${BASE}/include/v8-platform.h
+    ${BASE}/include/v8-profiler.h
+    ${BASE}/include/v8-testing.h
+    ${BASE}/include/v8-util.h
+    ${BASE}/include/v8-value-serializer-version.h
+    ${BASE}/include/v8-version-string.h
+    ${BASE}/include/v8-version.h
+    ${BASE}/include/v8.h
+    ${BASE}/include/v8config.h
+    ${BASE}/src/accessors.cc
+    ${BASE}/src/accessors.h
+    ${BASE}/src/address-map.cc
+    ${BASE}/src/address-map.h
+    ${BASE}/src/allocation-site-scopes.h
+    ${BASE}/src/allocation.cc
+    ${BASE}/src/allocation.h
+    ${BASE}/src/api-arguments-inl.h
+    ${BASE}/src/api-arguments.cc
+    ${BASE}/src/api-arguments.h
+    ${BASE}/src/api-natives.cc
+    ${BASE}/src/api-natives.h
+    ${BASE}/src/api.cc
+    ${BASE}/src/api.h
+    ${BASE}/src/arguments.cc
+    ${BASE}/src/arguments.h
+    ${BASE}/src/asmjs/asm-js.cc
+    ${BASE}/src/asmjs/asm-js.h
+    ${BASE}/src/asmjs/asm-names.h
+    ${BASE}/src/asmjs/asm-parser.cc
+    ${BASE}/src/asmjs/asm-parser.h
+    ${BASE}/src/asmjs/asm-scanner.cc
+    ${BASE}/src/asmjs/asm-scanner.h
+    ${BASE}/src/asmjs/asm-types.cc
+    ${BASE}/src/asmjs/asm-types.h
+    ${BASE}/src/asmjs/switch-logic.cc
+    ${BASE}/src/asmjs/switch-logic.h
+    ${BASE}/src/assembler-inl.h
+    ${BASE}/src/assembler.cc
+    ${BASE}/src/assembler.h
+    ${BASE}/src/assert-scope.cc
+    ${BASE}/src/assert-scope.h
+    ${BASE}/src/ast/ast-function-literal-id-reindexer.cc
+    ${BASE}/src/ast/ast-function-literal-id-reindexer.h
+    ${BASE}/src/ast/ast-numbering.cc
+    ${BASE}/src/ast/ast-numbering.h
+    ${BASE}/src/ast/ast-source-ranges.h
+    ${BASE}/src/ast/ast-traversal-visitor.h
+    ${BASE}/src/ast/ast-value-factory.cc
+    ${BASE}/src/ast/ast-value-factory.h
+    ${BASE}/src/ast/ast.cc
+    ${BASE}/src/ast/ast.h
+    ${BASE}/src/ast/compile-time-value.cc
+    ${BASE}/src/ast/compile-time-value.h
+    ${BASE}/src/ast/context-slot-cache.cc
+    ${BASE}/src/ast/context-slot-cache.h
+    ${BASE}/src/ast/modules.cc
+    ${BASE}/src/ast/modules.h
+    ${BASE}/src/ast/prettyprinter.cc
+    ${BASE}/src/ast/prettyprinter.h
+    ${BASE}/src/ast/scopes.cc
+    ${BASE}/src/ast/scopes.h
+    ${BASE}/src/ast/variables.cc
+    ${BASE}/src/ast/variables.h
+    ${BASE}/src/bailout-reason.cc
+    ${BASE}/src/bailout-reason.h
+    ${BASE}/src/basic-block-profiler.cc
+    ${BASE}/src/basic-block-profiler.h
+    ${BASE}/src/bignum-dtoa.cc
+    ${BASE}/src/bignum-dtoa.h
+    ${BASE}/src/bignum.cc
+    ${BASE}/src/bignum.h
+    ${BASE}/src/bit-vector.cc
+    ${BASE}/src/bit-vector.h
+    ${BASE}/src/bootstrapper.cc
+    ${BASE}/src/bootstrapper.h
+    ${BASE}/src/boxed-float.h
+    ${BASE}/src/builtins/builtins-api.cc
+    ${BASE}/src/builtins/builtins-array.cc
+    ${BASE}/src/builtins/builtins-arraybuffer.cc
+    ${BASE}/src/builtins/builtins-bigint.cc
+    ${BASE}/src/builtins/builtins-boolean.cc
+    ${BASE}/src/builtins/builtins-call.cc
+    ${BASE}/src/builtins/builtins-callsite.cc
+    ${BASE}/src/builtins/builtins-collections.cc
+    ${BASE}/src/builtins/builtins-console.cc
+    ${BASE}/src/builtins/builtins-constructor.h
+    ${BASE}/src/builtins/builtins-dataview.cc
+    ${BASE}/src/builtins/builtins-date.cc
+    ${BASE}/src/builtins/builtins-definitions.h
+    ${BASE}/src/builtins/builtins-descriptors.h
+    ${BASE}/src/builtins/builtins-error.cc
+    ${BASE}/src/builtins/builtins-function.cc
+    ${BASE}/src/builtins/builtins-global.cc
+    ${BASE}/src/builtins/builtins-internal.cc
+    ${BASE}/src/builtins/builtins-interpreter.cc
+    ${BASE}/src/builtins/builtins-json.cc
+    ${BASE}/src/builtins/builtins-math.cc
+    ${BASE}/src/builtins/builtins-number.cc
+    ${BASE}/src/builtins/builtins-object.cc
+    ${BASE}/src/builtins/builtins-promise.cc
+    ${BASE}/src/builtins/builtins-reflect.cc
+    ${BASE}/src/builtins/builtins-regexp.cc
+    ${BASE}/src/builtins/builtins-sharedarraybuffer.cc
+    ${BASE}/src/builtins/builtins-string.cc
+    ${BASE}/src/builtins/builtins-symbol.cc
+    ${BASE}/src/builtins/builtins-typedarray.cc
+    ${BASE}/src/builtins/builtins-utils.h
+    ${BASE}/src/builtins/builtins.cc
+    ${BASE}/src/builtins/builtins.h
+    ${BASE}/src/cached-powers.cc
+    ${BASE}/src/cached-powers.h
+    ${BASE}/src/callable.h
+    ${BASE}/src/cancelable-task.cc
+    ${BASE}/src/cancelable-task.h
+    ${BASE}/src/char-predicates-inl.h
+    ${BASE}/src/char-predicates.cc
+    ${BASE}/src/char-predicates.h
+    ${BASE}/src/checks.h
+    ${BASE}/src/code-events.h
+    ${BASE}/src/code-factory.cc
+    ${BASE}/src/code-factory.h
+    ${BASE}/src/code-stub-assembler.cc
+    ${BASE}/src/code-stub-assembler.h
+    ${BASE}/src/code-stubs-utils.h
+    ${BASE}/src/code-stubs.cc
+    ${BASE}/src/code-stubs.h
+    ${BASE}/src/codegen.cc
+    ${BASE}/src/codegen.h
+    ${BASE}/src/collector.h
+    ${BASE}/src/compilation-cache.cc
+    ${BASE}/src/compilation-cache.h
+    ${BASE}/src/compilation-dependencies.cc
+    ${BASE}/src/compilation-dependencies.h
+    ${BASE}/src/compilation-info.cc
+    ${BASE}/src/compilation-info.h
+    ${BASE}/src/compilation-statistics.cc
+    ${BASE}/src/compilation-statistics.h
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher-job.cc
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher-job.h
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher-tracer.cc
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher-tracer.h
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher.cc
+    ${BASE}/src/compiler-dispatcher/compiler-dispatcher.h
+    ${BASE}/src/compiler-dispatcher/optimizing-compile-dispatcher.cc
+    ${BASE}/src/compiler-dispatcher/optimizing-compile-dispatcher.h
+    ${BASE}/src/compiler-dispatcher/unoptimized-compile-job.cc
+    ${BASE}/src/compiler-dispatcher/unoptimized-compile-job.h
+    ${BASE}/src/compiler.cc
+    ${BASE}/src/compiler.h
+    ${BASE}/src/compiler/access-builder.cc
+    ${BASE}/src/compiler/access-builder.h
+    ${BASE}/src/compiler/access-info.cc
+    ${BASE}/src/compiler/access-info.h
+    ${BASE}/src/compiler/all-nodes.cc
+    ${BASE}/src/compiler/all-nodes.h
+    ${BASE}/src/compiler/allocation-builder.h
+    ${BASE}/src/compiler/basic-block-instrumentor.cc
+    ${BASE}/src/compiler/basic-block-instrumentor.h
+    ${BASE}/src/compiler/branch-elimination.cc
+    ${BASE}/src/compiler/branch-elimination.h
+    ${BASE}/src/compiler/bytecode-analysis.cc
+    ${BASE}/src/compiler/bytecode-analysis.h
+    ${BASE}/src/compiler/bytecode-graph-builder.cc
+    ${BASE}/src/compiler/bytecode-graph-builder.h
+    ${BASE}/src/compiler/bytecode-liveness-map.cc
+    ${BASE}/src/compiler/bytecode-liveness-map.h
+    ${BASE}/src/compiler/c-linkage.cc
+    ${BASE}/src/compiler/checkpoint-elimination.cc
+    ${BASE}/src/compiler/checkpoint-elimination.h
+    ${BASE}/src/compiler/code-assembler.cc
+    ${BASE}/src/compiler/code-assembler.h
+    ${BASE}/src/compiler/code-generator-impl.h
+    ${BASE}/src/compiler/code-generator.cc
+    ${BASE}/src/compiler/code-generator.h
+    ${BASE}/src/compiler/common-node-cache.cc
+    ${BASE}/src/compiler/common-node-cache.h
+    ${BASE}/src/compiler/common-operator-reducer.cc
+    ${BASE}/src/compiler/common-operator-reducer.h
+    ${BASE}/src/compiler/common-operator.cc
+    ${BASE}/src/compiler/common-operator.h
+    ${BASE}/src/compiler/compiler-source-position-table.cc
+    ${BASE}/src/compiler/compiler-source-position-table.h
+    ${BASE}/src/compiler/control-equivalence.cc
+    ${BASE}/src/compiler/control-equivalence.h
+    ${BASE}/src/compiler/control-flow-optimizer.cc
+    ${BASE}/src/compiler/control-flow-optimizer.h
+    ${BASE}/src/compiler/dead-code-elimination.cc
+    ${BASE}/src/compiler/dead-code-elimination.h
+    ${BASE}/src/compiler/diamond.h
+    ${BASE}/src/compiler/effect-control-linearizer.cc
+    ${BASE}/src/compiler/effect-control-linearizer.h
+    ${BASE}/src/compiler/escape-analysis-reducer.cc
+    ${BASE}/src/compiler/escape-analysis-reducer.h
+    ${BASE}/src/compiler/escape-analysis.cc
+    ${BASE}/src/compiler/escape-analysis.h
+    ${BASE}/src/compiler/frame-elider.cc
+    ${BASE}/src/compiler/frame-elider.h
+    ${BASE}/src/compiler/frame-states.cc
+    ${BASE}/src/compiler/frame-states.h
+    ${BASE}/src/compiler/frame.cc
+    ${BASE}/src/compiler/frame.h
+    ${BASE}/src/compiler/gap-resolver.cc
+    ${BASE}/src/compiler/gap-resolver.h
+    ${BASE}/src/compiler/graph-assembler.cc
+    ${BASE}/src/compiler/graph-assembler.h
+    ${BASE}/src/compiler/graph-reducer.cc
+    ${BASE}/src/compiler/graph-reducer.h
+    ${BASE}/src/compiler/graph-trimmer.cc
+    ${BASE}/src/compiler/graph-trimmer.h
+    ${BASE}/src/compiler/graph-visualizer.cc
+    ${BASE}/src/compiler/graph-visualizer.h
+    ${BASE}/src/compiler/graph.cc
+    ${BASE}/src/compiler/graph.h
+    ${BASE}/src/compiler/instruction-codes.h
+    ${BASE}/src/compiler/instruction-scheduler.cc
+    ${BASE}/src/compiler/instruction-scheduler.h
+    ${BASE}/src/compiler/instruction-selector-impl.h
+    ${BASE}/src/compiler/instruction-selector.cc
+    ${BASE}/src/compiler/instruction-selector.h
+    ${BASE}/src/compiler/instruction.cc
+    ${BASE}/src/compiler/instruction.h
+    ${BASE}/src/compiler/int64-lowering.cc
+    ${BASE}/src/compiler/int64-lowering.h
+    ${BASE}/src/compiler/js-builtin-reducer.cc
+    ${BASE}/src/compiler/js-builtin-reducer.h
+    ${BASE}/src/compiler/js-call-reducer.cc
+    ${BASE}/src/compiler/js-call-reducer.h
+    ${BASE}/src/compiler/js-context-specialization.cc
+    ${BASE}/src/compiler/js-context-specialization.h
+    ${BASE}/src/compiler/js-create-lowering.cc
+    ${BASE}/src/compiler/js-create-lowering.h
+    ${BASE}/src/compiler/js-generic-lowering.cc
+    ${BASE}/src/compiler/js-generic-lowering.h
+    ${BASE}/src/compiler/js-graph.cc
+    ${BASE}/src/compiler/js-graph.h
+    ${BASE}/src/compiler/js-inlining-heuristic.cc
+    ${BASE}/src/compiler/js-inlining-heuristic.h
+    ${BASE}/src/compiler/js-inlining.cc
+    ${BASE}/src/compiler/js-inlining.h
+    ${BASE}/src/compiler/js-intrinsic-lowering.cc
+    ${BASE}/src/compiler/js-intrinsic-lowering.h
+    ${BASE}/src/compiler/js-native-context-specialization.cc
+    ${BASE}/src/compiler/js-native-context-specialization.h
+    ${BASE}/src/compiler/js-operator.cc
+    ${BASE}/src/compiler/js-operator.h
+    ${BASE}/src/compiler/js-type-hint-lowering.cc
+    ${BASE}/src/compiler/js-type-hint-lowering.h
+    ${BASE}/src/compiler/js-typed-lowering.cc
+    ${BASE}/src/compiler/js-typed-lowering.h
+    ${BASE}/src/compiler/jump-threading.cc
+    ${BASE}/src/compiler/jump-threading.h
+    ${BASE}/src/compiler/linkage.cc
+    ${BASE}/src/compiler/linkage.h
+    ${BASE}/src/compiler/live-range-separator.cc
+    ${BASE}/src/compiler/live-range-separator.h
+    ${BASE}/src/compiler/load-elimination.cc
+    ${BASE}/src/compiler/load-elimination.h
+    ${BASE}/src/compiler/loop-analysis.cc
+    ${BASE}/src/compiler/loop-analysis.h
+    ${BASE}/src/compiler/loop-peeling.cc
+    ${BASE}/src/compiler/loop-peeling.h
+    ${BASE}/src/compiler/loop-variable-optimizer.cc
+    ${BASE}/src/compiler/loop-variable-optimizer.h
+    ${BASE}/src/compiler/machine-graph-verifier.cc
+    ${BASE}/src/compiler/machine-graph-verifier.h
+    ${BASE}/src/compiler/machine-operator-reducer.cc
+    ${BASE}/src/compiler/machine-operator-reducer.h
+    ${BASE}/src/compiler/machine-operator.cc
+    ${BASE}/src/compiler/machine-operator.h
+    ${BASE}/src/compiler/memory-optimizer.cc
+    ${BASE}/src/compiler/memory-optimizer.h
+    ${BASE}/src/compiler/move-optimizer.cc
+    ${BASE}/src/compiler/move-optimizer.h
+    ${BASE}/src/compiler/node-aux-data.h
+    ${BASE}/src/compiler/node-cache.cc
+    ${BASE}/src/compiler/node-cache.h
+    ${BASE}/src/compiler/node-marker.cc
+    ${BASE}/src/compiler/node-marker.h
+    ${BASE}/src/compiler/node-matchers.cc
+    ${BASE}/src/compiler/node-matchers.h
+    ${BASE}/src/compiler/node-properties.cc
+    ${BASE}/src/compiler/node-properties.h
+    ${BASE}/src/compiler/node.cc
+    ${BASE}/src/compiler/node.h
+    ${BASE}/src/compiler/opcodes.cc
+    ${BASE}/src/compiler/opcodes.h
+    ${BASE}/src/compiler/operation-typer.cc
+    ${BASE}/src/compiler/operation-typer.h
+    ${BASE}/src/compiler/operator-properties.cc
+    ${BASE}/src/compiler/operator-properties.h
+    ${BASE}/src/compiler/operator.cc
+    ${BASE}/src/compiler/operator.h
+    ${BASE}/src/compiler/osr.cc
+    ${BASE}/src/compiler/osr.h
+    ${BASE}/src/compiler/persistent-map.h
+    ${BASE}/src/compiler/pipeline-statistics.cc
+    ${BASE}/src/compiler/pipeline-statistics.h
+    ${BASE}/src/compiler/pipeline.cc
+    ${BASE}/src/compiler/pipeline.h
+    ${BASE}/src/compiler/property-access-builder.cc
+    ${BASE}/src/compiler/property-access-builder.h
+    ${BASE}/src/compiler/raw-machine-assembler.cc
+    ${BASE}/src/compiler/raw-machine-assembler.h
+    ${BASE}/src/compiler/redundancy-elimination.cc
+    ${BASE}/src/compiler/redundancy-elimination.h
+    ${BASE}/src/compiler/register-allocator-verifier.cc
+    ${BASE}/src/compiler/register-allocator-verifier.h
+    ${BASE}/src/compiler/register-allocator.cc
+    ${BASE}/src/compiler/register-allocator.h
+    ${BASE}/src/compiler/representation-change.cc
+    ${BASE}/src/compiler/representation-change.h
+    ${BASE}/src/compiler/schedule.cc
+    ${BASE}/src/compiler/schedule.h
+    ${BASE}/src/compiler/scheduler.cc
+    ${BASE}/src/compiler/scheduler.h
+    ${BASE}/src/compiler/select-lowering.cc
+    ${BASE}/src/compiler/select-lowering.h
+    ${BASE}/src/compiler/simd-scalar-lowering.cc
+    ${BASE}/src/compiler/simd-scalar-lowering.h
+    ${BASE}/src/compiler/simplified-lowering.cc
+    ${BASE}/src/compiler/simplified-lowering.h
+    ${BASE}/src/compiler/simplified-operator-reducer.cc
+    ${BASE}/src/compiler/simplified-operator-reducer.h
+    ${BASE}/src/compiler/simplified-operator.cc
+    ${BASE}/src/compiler/simplified-operator.h
+    ${BASE}/src/compiler/state-values-utils.cc
+    ${BASE}/src/compiler/state-values-utils.h
+    ${BASE}/src/compiler/store-store-elimination.cc
+    ${BASE}/src/compiler/store-store-elimination.h
+    ${BASE}/src/compiler/type-cache.cc
+    ${BASE}/src/compiler/type-cache.h
+    ${BASE}/src/compiler/typed-optimization.cc
+    ${BASE}/src/compiler/typed-optimization.h
+    ${BASE}/src/compiler/typer.cc
+    ${BASE}/src/compiler/typer.h
+    ${BASE}/src/compiler/types.cc
+    ${BASE}/src/compiler/types.h
+    ${BASE}/src/compiler/unwinding-info-writer.h
+    ${BASE}/src/compiler/value-numbering-reducer.cc
+    ${BASE}/src/compiler/value-numbering-reducer.h
+    ${BASE}/src/compiler/verifier.cc
+    ${BASE}/src/compiler/verifier.h
+    ${BASE}/src/compiler/wasm-compiler.cc
+    ${BASE}/src/compiler/wasm-compiler.h
+    ${BASE}/src/compiler/wasm-linkage.cc
+    ${BASE}/src/compiler/zone-stats.cc
+    ${BASE}/src/compiler/zone-stats.h
+    ${BASE}/src/contexts-inl.h
+    ${BASE}/src/contexts.cc
+    ${BASE}/src/contexts.h
+    ${BASE}/src/conversions-inl.h
+    ${BASE}/src/conversions.cc
+    ${BASE}/src/conversions.h
+    ${BASE}/src/counters-inl.h
+    ${BASE}/src/counters.cc
+    ${BASE}/src/counters.h
+    ${BASE}/src/date.cc
+    ${BASE}/src/date.h
+    ${BASE}/src/dateparser-inl.h
+    ${BASE}/src/dateparser.cc
+    ${BASE}/src/dateparser.h
+    ${BASE}/src/debug/debug-coverage.cc
+    ${BASE}/src/debug/debug-coverage.h
+    ${BASE}/src/debug/debug-evaluate.cc
+    ${BASE}/src/debug/debug-evaluate.h
+    ${BASE}/src/debug/debug-frames.cc
+    ${BASE}/src/debug/debug-frames.h
+    ${BASE}/src/debug/debug-interface.h
+    ${BASE}/src/debug/debug-scope-iterator.cc
+    ${BASE}/src/debug/debug-scope-iterator.h
+    ${BASE}/src/debug/debug-scopes.cc
+    ${BASE}/src/debug/debug-scopes.h
+    ${BASE}/src/debug/debug-stack-trace-iterator.cc
+    ${BASE}/src/debug/debug-stack-trace-iterator.h
+    ${BASE}/src/debug/debug-type-profile.cc
+    ${BASE}/src/debug/debug-type-profile.h
+    ${BASE}/src/debug/debug.cc
+    ${BASE}/src/debug/debug.h
+    ${BASE}/src/debug/interface-types.h
+    ${BASE}/src/debug/liveedit.cc
+    ${BASE}/src/debug/liveedit.h
+    ${BASE}/src/deoptimize-reason.cc
+    ${BASE}/src/deoptimize-reason.h
+    ${BASE}/src/deoptimizer.cc
+    ${BASE}/src/deoptimizer.h
+    ${BASE}/src/detachable-vector.h
+    ${BASE}/src/disasm.h
+    ${BASE}/src/disassembler.cc
+    ${BASE}/src/disassembler.h
+    ${BASE}/src/diy-fp.cc
+    ${BASE}/src/diy-fp.h
+    ${BASE}/src/double.h
+    ${BASE}/src/dtoa.cc
+    ${BASE}/src/dtoa.h
+    ${BASE}/src/eh-frame.cc
+    ${BASE}/src/eh-frame.h
+    ${BASE}/src/elements-kind.cc
+    ${BASE}/src/elements-kind.h
+    ${BASE}/src/elements.cc
+    ${BASE}/src/elements.h
+    ${BASE}/src/execution.cc
+    ${BASE}/src/execution.h
+    ${BASE}/src/extensions/externalize-string-extension.cc
+    ${BASE}/src/extensions/externalize-string-extension.h
+    ${BASE}/src/extensions/free-buffer-extension.cc
+    ${BASE}/src/extensions/free-buffer-extension.h
+    ${BASE}/src/extensions/gc-extension.cc
+    ${BASE}/src/extensions/gc-extension.h
+    ${BASE}/src/extensions/ignition-statistics-extension.cc
+    ${BASE}/src/extensions/ignition-statistics-extension.h
+    ${BASE}/src/extensions/statistics-extension.cc
+    ${BASE}/src/extensions/statistics-extension.h
+    ${BASE}/src/extensions/trigger-failure-extension.cc
+    ${BASE}/src/extensions/trigger-failure-extension.h
+    ${BASE}/src/external-reference-table.cc
+    ${BASE}/src/external-reference-table.h
+    ${BASE}/src/factory-inl.h
+    ${BASE}/src/factory.cc
+    ${BASE}/src/factory.h
+    ${BASE}/src/fast-dtoa.cc
+    ${BASE}/src/fast-dtoa.h
+    ${BASE}/src/feedback-vector-inl.h
+    ${BASE}/src/feedback-vector.cc
+    ${BASE}/src/feedback-vector.h
+    ${BASE}/src/field-index-inl.h
+    ${BASE}/src/field-index.h
+    ${BASE}/src/field-type.cc
+    ${BASE}/src/field-type.h
+    ${BASE}/src/fixed-dtoa.cc
+    ${BASE}/src/fixed-dtoa.h
+    ${BASE}/src/flag-definitions.h
+    ${BASE}/src/flags.cc
+    ${BASE}/src/flags.h
+    ${BASE}/src/frame-constants.h
+    ${BASE}/src/frames-inl.h
+    ${BASE}/src/frames.cc
+    ${BASE}/src/frames.h
+    ${BASE}/src/futex-emulation.cc
+    ${BASE}/src/futex-emulation.h
+    ${BASE}/src/gdb-jit.cc
+    ${BASE}/src/gdb-jit.h
+    ${BASE}/src/global-handles.cc
+    ${BASE}/src/global-handles.h
+    ${BASE}/src/globals.h
+    ${BASE}/src/handles-inl.h
+    ${BASE}/src/handles.cc
+    ${BASE}/src/handles.h
+    ${BASE}/src/heap-symbols.h
+    ${BASE}/src/heap/array-buffer-collector.cc
+    ${BASE}/src/heap/array-buffer-collector.h
+    ${BASE}/src/heap/array-buffer-tracker-inl.h
+    ${BASE}/src/heap/array-buffer-tracker.cc
+    ${BASE}/src/heap/array-buffer-tracker.h
+    ${BASE}/src/heap/barrier.h
+    ${BASE}/src/heap/code-stats.cc
+    ${BASE}/src/heap/code-stats.h
+    ${BASE}/src/heap/concurrent-marking.cc
+    ${BASE}/src/heap/concurrent-marking.h
+    ${BASE}/src/heap/embedder-tracing.cc
+    ${BASE}/src/heap/embedder-tracing.h
+    ${BASE}/src/heap/gc-idle-time-handler.cc
+    ${BASE}/src/heap/gc-idle-time-handler.h
+    ${BASE}/src/heap/gc-tracer.cc
+    ${BASE}/src/heap/gc-tracer.h
+    ${BASE}/src/heap/heap-inl.h
+    ${BASE}/src/heap/heap.cc
+    ${BASE}/src/heap/heap.h
+    ${BASE}/src/heap/incremental-marking-inl.h
+    ${BASE}/src/heap/incremental-marking-job.cc
+    ${BASE}/src/heap/incremental-marking-job.h
+    ${BASE}/src/heap/incremental-marking.cc
+    ${BASE}/src/heap/incremental-marking.h
+    ${BASE}/src/heap/invalidated-slots-inl.h
+    ${BASE}/src/heap/invalidated-slots.cc
+    ${BASE}/src/heap/invalidated-slots.h
+    ${BASE}/src/heap/item-parallel-job.h
+    ${BASE}/src/heap/mark-compact-inl.h
+    ${BASE}/src/heap/mark-compact.cc
+    ${BASE}/src/heap/mark-compact.h
+    ${BASE}/src/heap/marking.cc
+    ${BASE}/src/heap/marking.h
+    ${BASE}/src/heap/memory-reducer.cc
+    ${BASE}/src/heap/memory-reducer.h
+    ${BASE}/src/heap/object-stats.cc
+    ${BASE}/src/heap/object-stats.h
+    ${BASE}/src/heap/objects-visiting-inl.h
+    ${BASE}/src/heap/objects-visiting.cc
+    ${BASE}/src/heap/objects-visiting.h
+    ${BASE}/src/heap/remembered-set.h
+    ${BASE}/src/heap/scavenge-job.cc
+    ${BASE}/src/heap/scavenge-job.h
+    ${BASE}/src/heap/scavenger-inl.h
+    ${BASE}/src/heap/scavenger.cc
+    ${BASE}/src/heap/scavenger.h
+    ${BASE}/src/heap/slot-set.h
+    ${BASE}/src/heap/spaces-inl.h
+    ${BASE}/src/heap/spaces.cc
+    ${BASE}/src/heap/spaces.h
+    ${BASE}/src/heap/store-buffer.cc
+    ${BASE}/src/heap/store-buffer.h
+    ${BASE}/src/heap/sweeper.cc
+    ${BASE}/src/heap/sweeper.h
+    ${BASE}/src/heap/worklist.h
+    ${BASE}/src/ic/call-optimization.cc
+    ${BASE}/src/ic/call-optimization.h
+    ${BASE}/src/ic/handler-configuration-inl.h
+    ${BASE}/src/ic/handler-configuration.cc
+    ${BASE}/src/ic/handler-configuration.h
+    ${BASE}/src/ic/ic-inl.h
+    ${BASE}/src/ic/ic-stats.cc
+    ${BASE}/src/ic/ic-stats.h
+    ${BASE}/src/ic/ic.cc
+    ${BASE}/src/ic/ic.h
+    ${BASE}/src/ic/stub-cache.cc
+    ${BASE}/src/ic/stub-cache.h
+    ${BASE}/src/icu_util.cc
+    ${BASE}/src/icu_util.h
+    ${BASE}/src/identity-map.cc
+    ${BASE}/src/identity-map.h
+    ${BASE}/src/interface-descriptors.cc
+    ${BASE}/src/interface-descriptors.h
+    ${BASE}/src/interpreter/block-coverage-builder.h
+    ${BASE}/src/interpreter/bytecode-array-accessor.cc
+    ${BASE}/src/interpreter/bytecode-array-accessor.h
+    ${BASE}/src/interpreter/bytecode-array-builder.cc
+    ${BASE}/src/interpreter/bytecode-array-builder.h
+    ${BASE}/src/interpreter/bytecode-array-iterator.cc
+    ${BASE}/src/interpreter/bytecode-array-iterator.h
+    ${BASE}/src/interpreter/bytecode-array-random-iterator.cc
+    ${BASE}/src/interpreter/bytecode-array-random-iterator.h
+    ${BASE}/src/interpreter/bytecode-array-writer.cc
+    ${BASE}/src/interpreter/bytecode-array-writer.h
+    ${BASE}/src/interpreter/bytecode-decoder.cc
+    ${BASE}/src/interpreter/bytecode-decoder.h
+    ${BASE}/src/interpreter/bytecode-flags.cc
+    ${BASE}/src/interpreter/bytecode-flags.h
+    ${BASE}/src/interpreter/bytecode-generator.cc
+    ${BASE}/src/interpreter/bytecode-generator.h
+    ${BASE}/src/interpreter/bytecode-jump-table.h
+    ${BASE}/src/interpreter/bytecode-label.cc
+    ${BASE}/src/interpreter/bytecode-label.h
+    ${BASE}/src/interpreter/bytecode-node.cc
+    ${BASE}/src/interpreter/bytecode-node.h
+    ${BASE}/src/interpreter/bytecode-operands.cc
+    ${BASE}/src/interpreter/bytecode-operands.h
+    ${BASE}/src/interpreter/bytecode-register-allocator.h
+    ${BASE}/src/interpreter/bytecode-register-optimizer.cc
+    ${BASE}/src/interpreter/bytecode-register-optimizer.h
+    ${BASE}/src/interpreter/bytecode-register.cc
+    ${BASE}/src/interpreter/bytecode-register.h
+    ${BASE}/src/interpreter/bytecode-source-info.cc
+    ${BASE}/src/interpreter/bytecode-source-info.h
+    ${BASE}/src/interpreter/bytecode-traits.h
+    ${BASE}/src/interpreter/bytecodes.cc
+    ${BASE}/src/interpreter/bytecodes.h
+    ${BASE}/src/interpreter/constant-array-builder.cc
+    ${BASE}/src/interpreter/constant-array-builder.h
+    ${BASE}/src/interpreter/control-flow-builders.cc
+    ${BASE}/src/interpreter/control-flow-builders.h
+    ${BASE}/src/interpreter/handler-table-builder.cc
+    ${BASE}/src/interpreter/handler-table-builder.h
+    ${BASE}/src/interpreter/interpreter-generator.h
+    ${BASE}/src/interpreter/interpreter-intrinsics.cc
+    ${BASE}/src/interpreter/interpreter-intrinsics.h
+    ${BASE}/src/interpreter/interpreter.cc
+    ${BASE}/src/interpreter/interpreter.h
+    ${BASE}/src/isolate-inl.h
+    ${BASE}/src/isolate.cc
+    ${BASE}/src/isolate.h
+    ${BASE}/src/json-parser.cc
+    ${BASE}/src/json-parser.h
+    ${BASE}/src/json-stringifier.cc
+    ${BASE}/src/json-stringifier.h
+    ${BASE}/src/keys.cc
+    ${BASE}/src/keys.h
+    ${BASE}/src/label.h
+    ${BASE}/src/layout-descriptor-inl.h
+    ${BASE}/src/layout-descriptor.cc
+    ${BASE}/src/layout-descriptor.h
+    ${BASE}/src/locked-queue-inl.h
+    ${BASE}/src/locked-queue.h
+    ${BASE}/src/log-inl.h
+    ${BASE}/src/log-utils.cc
+    ${BASE}/src/log-utils.h
+    ${BASE}/src/log.cc
+    ${BASE}/src/log.h
+    ${BASE}/src/lookup-cache-inl.h
+    ${BASE}/src/lookup-cache.cc
+    ${BASE}/src/lookup-cache.h
+    ${BASE}/src/lookup.cc
+    ${BASE}/src/lookup.h
+    ${BASE}/src/machine-type.cc
+    ${BASE}/src/machine-type.h
+    ${BASE}/src/macro-assembler-inl.h
+    ${BASE}/src/macro-assembler.h
+    ${BASE}/src/managed.h
+    ${BASE}/src/map-updater.cc
+    ${BASE}/src/map-updater.h
+    ${BASE}/src/messages.cc
+    ${BASE}/src/messages.h
+    ${BASE}/src/msan.h
+    ${BASE}/src/objects-body-descriptors-inl.h
+    ${BASE}/src/objects-body-descriptors.h
+    ${BASE}/src/objects-debug.cc
+    ${BASE}/src/objects-inl.h
+    ${BASE}/src/objects-printer.cc
+    ${BASE}/src/objects.cc
+    ${BASE}/src/objects.h
+    ${BASE}/src/objects/arguments-inl.h
+    ${BASE}/src/objects/arguments.h
+    ${BASE}/src/objects/bigint.cc
+    ${BASE}/src/objects/bigint.h
+    ${BASE}/src/objects/code-inl.h
+    ${BASE}/src/objects/code.h
+    ${BASE}/src/objects/compilation-cache-inl.h
+    ${BASE}/src/objects/compilation-cache.h
+    ${BASE}/src/objects/debug-objects-inl.h
+    ${BASE}/src/objects/debug-objects.cc
+    ${BASE}/src/objects/debug-objects.h
+    ${BASE}/src/objects/descriptor-array.h
+    ${BASE}/src/objects/dictionary.h
+    ${BASE}/src/objects/frame-array-inl.h
+    ${BASE}/src/objects/frame-array.h
+    ${BASE}/src/objects/hash-table-inl.h
+    ${BASE}/src/objects/hash-table.h
+    ${BASE}/src/objects/js-array.h
+    ${BASE}/src/objects/js-array-inl.h
+    ${BASE}/src/objects/js-regexp.h
+    ${BASE}/src/objects/js-regexp-inl.h
+    ${BASE}/src/objects/literal-objects.cc
+    ${BASE}/src/objects/literal-objects.h
+    ${BASE}/src/objects/map-inl.h
+    ${BASE}/src/objects/map.h
+    ${BASE}/src/objects/module-inl.h
+    ${BASE}/src/objects/module.cc
+    ${BASE}/src/objects/module.h
+    ${BASE}/src/objects/name-inl.h
+    ${BASE}/src/objects/name.h
+    ${BASE}/src/objects/object-macros-undef.h
+    ${BASE}/src/objects/object-macros.h
+    ${BASE}/src/objects/property-descriptor-object-inl.h
+    ${BASE}/src/objects/property-descriptor-object.h
+    ${BASE}/src/objects/regexp-match-info.h
+    ${BASE}/src/objects/scope-info.cc
+    ${BASE}/src/objects/scope-info.h
+    ${BASE}/src/objects/script-inl.h
+    ${BASE}/src/objects/script.h
+    ${BASE}/src/objects/shared-function-info-inl.h
+    ${BASE}/src/objects/shared-function-info.h
+    ${BASE}/src/objects/string-inl.h
+    ${BASE}/src/objects/string-table.h
+    ${BASE}/src/objects/string.h
+    ${BASE}/src/objects/template-objects.cc
+    ${BASE}/src/objects/template-objects.h
+    ${BASE}/src/ostreams.cc
+    ${BASE}/src/ostreams.h
+    ${BASE}/src/parsing/background-parsing-task.cc
+    ${BASE}/src/parsing/background-parsing-task.h
+    ${BASE}/src/parsing/duplicate-finder.h
+    ${BASE}/src/parsing/expression-classifier.h
+    ${BASE}/src/parsing/expression-scope-reparenter.cc
+    ${BASE}/src/parsing/expression-scope-reparenter.h
+    ${BASE}/src/parsing/func-name-inferrer.cc
+    ${BASE}/src/parsing/func-name-inferrer.h
+    ${BASE}/src/parsing/parse-info.cc
+    ${BASE}/src/parsing/parse-info.h
+    ${BASE}/src/parsing/parser-base.h
+    ${BASE}/src/parsing/parser.cc
+    ${BASE}/src/parsing/parser.h
+    ${BASE}/src/parsing/parsing.cc
+    ${BASE}/src/parsing/parsing.h
+    ${BASE}/src/parsing/pattern-rewriter.cc
+    ${BASE}/src/parsing/preparse-data-format.h
+    ${BASE}/src/parsing/preparse-data.cc
+    ${BASE}/src/parsing/preparse-data.h
+    ${BASE}/src/parsing/preparsed-scope-data.cc
+    ${BASE}/src/parsing/preparsed-scope-data.h
+    ${BASE}/src/parsing/preparser.cc
+    ${BASE}/src/parsing/preparser.h
+    ${BASE}/src/parsing/rewriter.cc
+    ${BASE}/src/parsing/rewriter.h
+    ${BASE}/src/parsing/scanner-character-streams.cc
+    ${BASE}/src/parsing/scanner-character-streams.h
+    ${BASE}/src/parsing/scanner.cc
+    ${BASE}/src/parsing/scanner.h
+    ${BASE}/src/parsing/token.cc
+    ${BASE}/src/parsing/token.h
+    ${BASE}/src/pending-compilation-error-handler.cc
+    ${BASE}/src/pending-compilation-error-handler.h
+    ${BASE}/src/perf-jit.cc
+    ${BASE}/src/perf-jit.h
+    ${BASE}/src/profiler/allocation-tracker.cc
+    ${BASE}/src/profiler/allocation-tracker.h
+    ${BASE}/src/profiler/circular-queue-inl.h
+    ${BASE}/src/profiler/circular-queue.h
+    ${BASE}/src/profiler/cpu-profiler-inl.h
+    ${BASE}/src/profiler/cpu-profiler.cc
+    ${BASE}/src/profiler/cpu-profiler.h
+    ${BASE}/src/profiler/heap-profiler.cc
+    ${BASE}/src/profiler/heap-profiler.h
+    ${BASE}/src/profiler/heap-snapshot-generator-inl.h
+    ${BASE}/src/profiler/heap-snapshot-generator.cc
+    ${BASE}/src/profiler/heap-snapshot-generator.h
+    ${BASE}/src/profiler/profile-generator-inl.h
+    ${BASE}/src/profiler/profile-generator.cc
+    ${BASE}/src/profiler/profile-generator.h
+    ${BASE}/src/profiler/profiler-listener.cc
+    ${BASE}/src/profiler/profiler-listener.h
+    ${BASE}/src/profiler/sampling-heap-profiler.cc
+    ${BASE}/src/profiler/sampling-heap-profiler.h
+    ${BASE}/src/profiler/strings-storage.cc
+    ${BASE}/src/profiler/strings-storage.h
+    ${BASE}/src/profiler/tick-sample.cc
+    ${BASE}/src/profiler/tick-sample.h
+    ${BASE}/src/profiler/tracing-cpu-profiler.cc
+    ${BASE}/src/profiler/tracing-cpu-profiler.h
+    ${BASE}/src/profiler/unbound-queue-inl.h
+    ${BASE}/src/profiler/unbound-queue.h
+    ${BASE}/src/property-descriptor.cc
+    ${BASE}/src/property-descriptor.h
+    ${BASE}/src/property-details.h
+    ${BASE}/src/property.cc
+    ${BASE}/src/property.h
+    ${BASE}/src/prototype.h
+    ${BASE}/src/regexp/bytecodes-irregexp.h
+    ${BASE}/src/regexp/interpreter-irregexp.cc
+    ${BASE}/src/regexp/interpreter-irregexp.h
+    ${BASE}/src/regexp/jsregexp-inl.h
+    ${BASE}/src/regexp/jsregexp.cc
+    ${BASE}/src/regexp/jsregexp.h
+    ${BASE}/src/regexp/regexp-ast.cc
+    ${BASE}/src/regexp/regexp-ast.h
+    ${BASE}/src/regexp/regexp-macro-assembler-irregexp-inl.h
+    ${BASE}/src/regexp/regexp-macro-assembler-irregexp.cc
+    ${BASE}/src/regexp/regexp-macro-assembler-irregexp.h
+    ${BASE}/src/regexp/regexp-macro-assembler-tracer.cc
+    ${BASE}/src/regexp/regexp-macro-assembler-tracer.h
+    ${BASE}/src/regexp/regexp-macro-assembler.cc
+    ${BASE}/src/regexp/regexp-macro-assembler.h
+    ${BASE}/src/regexp/regexp-parser.cc
+    ${BASE}/src/regexp/regexp-parser.h
+    ${BASE}/src/regexp/regexp-stack.cc
+    ${BASE}/src/regexp/regexp-stack.h
+    ${BASE}/src/regexp/regexp-utils.cc
+    ${BASE}/src/regexp/regexp-utils.h
+    ${BASE}/src/register-configuration.cc
+    ${BASE}/src/register-configuration.h
+    ${BASE}/src/reglist.h
+    ${BASE}/src/runtime-profiler.cc
+    ${BASE}/src/runtime-profiler.h
+    ${BASE}/src/runtime/runtime-array.cc
+    ${BASE}/src/runtime/runtime-atomics.cc
+    ${BASE}/src/runtime/runtime-bigint.cc
+    ${BASE}/src/runtime/runtime-classes.cc
+    ${BASE}/src/runtime/runtime-collections.cc
+    ${BASE}/src/runtime/runtime-compiler.cc
+    ${BASE}/src/runtime/runtime-date.cc
+    ${BASE}/src/runtime/runtime-debug.cc
+    ${BASE}/src/runtime/runtime-error.cc
+    ${BASE}/src/runtime/runtime-forin.cc
+    ${BASE}/src/runtime/runtime-function.cc
+    ${BASE}/src/runtime/runtime-futex.cc
+    ${BASE}/src/runtime/runtime-generator.cc
+    ${BASE}/src/runtime/runtime-internal.cc
+    ${BASE}/src/runtime/runtime-interpreter.cc
+    ${BASE}/src/runtime/runtime-literals.cc
+    ${BASE}/src/runtime/runtime-liveedit.cc
+    ${BASE}/src/runtime/runtime-maths.cc
+    ${BASE}/src/runtime/runtime-module.cc
+    ${BASE}/src/runtime/runtime-numbers.cc
+    ${BASE}/src/runtime/runtime-object.cc
+    ${BASE}/src/runtime/runtime-operators.cc
+    ${BASE}/src/runtime/runtime-promise.cc
+    ${BASE}/src/runtime/runtime-proxy.cc
+    ${BASE}/src/runtime/runtime-regexp.cc
+    ${BASE}/src/runtime/runtime-scopes.cc
+    ${BASE}/src/runtime/runtime-strings.cc
+    ${BASE}/src/runtime/runtime-symbol.cc
+    ${BASE}/src/runtime/runtime-test.cc
+    ${BASE}/src/runtime/runtime-typedarray.cc
+    ${BASE}/src/runtime/runtime-utils.h
+    ${BASE}/src/runtime/runtime-wasm.cc
+    ${BASE}/src/runtime/runtime.cc
+    ${BASE}/src/runtime/runtime.h
+    ${BASE}/src/safepoint-table.cc
+    ${BASE}/src/safepoint-table.h
+    ${BASE}/src/setup-isolate.h
+    ${BASE}/src/signature.h
+    ${BASE}/src/simulator.h
+    ${BASE}/src/snapshot/builtin-deserializer-allocator.cc
+    ${BASE}/src/snapshot/builtin-deserializer-allocator.h
+    ${BASE}/src/snapshot/builtin-deserializer.cc
+    ${BASE}/src/snapshot/builtin-deserializer.h
+    ${BASE}/src/snapshot/builtin-serializer-allocator.cc
+    ${BASE}/src/snapshot/builtin-serializer-allocator.h
+    ${BASE}/src/snapshot/builtin-serializer.cc
+    ${BASE}/src/snapshot/builtin-serializer.h
+    ${BASE}/src/snapshot/builtin-snapshot-utils.cc
+    ${BASE}/src/snapshot/builtin-snapshot-utils.h
+    ${BASE}/src/snapshot/code-serializer.cc
+    ${BASE}/src/snapshot/code-serializer.h
+    ${BASE}/src/snapshot/default-deserializer-allocator.cc
+    ${BASE}/src/snapshot/default-deserializer-allocator.h
+    ${BASE}/src/snapshot/default-serializer-allocator.cc
+    ${BASE}/src/snapshot/default-serializer-allocator.h
+    ${BASE}/src/snapshot/deserializer.cc
+    ${BASE}/src/snapshot/deserializer.h
+    ${BASE}/src/snapshot/natives-common.cc
+    ${BASE}/src/snapshot/natives.h
+    ${BASE}/src/snapshot/object-deserializer.cc
+    ${BASE}/src/snapshot/object-deserializer.h
+    ${BASE}/src/snapshot/partial-deserializer.cc
+    ${BASE}/src/snapshot/partial-deserializer.h
+    ${BASE}/src/snapshot/partial-serializer.cc
+    ${BASE}/src/snapshot/partial-serializer.h
+    ${BASE}/src/snapshot/serializer-common.cc
+    ${BASE}/src/snapshot/serializer-common.h
+    ${BASE}/src/snapshot/serializer.cc
+    ${BASE}/src/snapshot/serializer.h
+    ${BASE}/src/snapshot/snapshot-common.cc
+    ${BASE}/src/snapshot/snapshot-source-sink.cc
+    ${BASE}/src/snapshot/snapshot-source-sink.h
+    ${BASE}/src/snapshot/snapshot.h
+    ${BASE}/src/snapshot/startup-deserializer.cc
+    ${BASE}/src/snapshot/startup-deserializer.h
+    ${BASE}/src/snapshot/startup-serializer.cc
+    ${BASE}/src/snapshot/startup-serializer.h
+    ${BASE}/src/source-position-table.cc
+    ${BASE}/src/source-position-table.h
+    ${BASE}/src/source-position.cc
+    ${BASE}/src/source-position.h
+    ${BASE}/src/splay-tree-inl.h
+    ${BASE}/src/splay-tree.h
+    ${BASE}/src/startup-data-util.cc
+    ${BASE}/src/startup-data-util.h
+    ${BASE}/src/string-builder.cc
+    ${BASE}/src/string-builder.h
+    ${BASE}/src/string-case.cc
+    ${BASE}/src/string-case.h
+    ${BASE}/src/string-hasher-inl.h
+    ${BASE}/src/string-hasher.h
+    ${BASE}/src/string-search.h
+    ${BASE}/src/string-stream.cc
+    ${BASE}/src/string-stream.h
+    ${BASE}/src/strtod.cc
+    ${BASE}/src/strtod.h
+    ${BASE}/src/tracing/trace-event.cc
+    ${BASE}/src/tracing/trace-event.h
+    ${BASE}/src/tracing/traced-value.cc
+    ${BASE}/src/tracing/traced-value.h
+    ${BASE}/src/tracing/tracing-category-observer.cc
+    ${BASE}/src/tracing/tracing-category-observer.h
+    ${BASE}/src/transitions-inl.h
+    ${BASE}/src/transitions.cc
+    ${BASE}/src/transitions.h
+    ${BASE}/src/trap-handler/handler-outside.cc
+    ${BASE}/src/trap-handler/handler-shared.cc
+    ${BASE}/src/trap-handler/trap-handler-internal.h
+    ${BASE}/src/trap-handler/trap-handler.h
+    ${BASE}/src/type-hints.cc
+    ${BASE}/src/type-hints.h
+    ${BASE}/src/unicode-cache-inl.h
+    ${BASE}/src/unicode-cache.h
+    ${BASE}/src/unicode-decoder.cc
+    ${BASE}/src/unicode-decoder.h
+    ${BASE}/src/unicode-inl.h
+    ${BASE}/src/unicode.cc
+    ${BASE}/src/unicode.h
+    ${BASE}/src/uri.cc
+    ${BASE}/src/uri.h
+    ${BASE}/src/utils-inl.h
+    ${BASE}/src/utils.cc
+    ${BASE}/src/utils.h
+    ${BASE}/src/v8.cc
+    ${BASE}/src/v8.h
+    ${BASE}/src/v8memory.h
+    ${BASE}/src/v8threads.cc
+    ${BASE}/src/v8threads.h
+    ${BASE}/src/value-serializer.cc
+    ${BASE}/src/value-serializer.h
+    ${BASE}/src/vector.h
+    ${BASE}/src/version.cc
+    ${BASE}/src/version.h
+    ${BASE}/src/visitors.cc
+    ${BASE}/src/visitors.h
+    ${BASE}/src/vm-state-inl.h
+    ${BASE}/src/vm-state.h
+    ${BASE}/src/wasm/baseline/liftoff-assembler.cc
+    ${BASE}/src/wasm/baseline/liftoff-assembler.h
+    ${BASE}/src/wasm/baseline/liftoff-compiler.cc
+    ${BASE}/src/wasm/compilation-manager.cc
+    ${BASE}/src/wasm/compilation-manager.h
+    ${BASE}/src/wasm/decoder.h
+    ${BASE}/src/wasm/function-body-decoder-impl.h
+    ${BASE}/src/wasm/function-body-decoder.cc
+    ${BASE}/src/wasm/function-body-decoder.h
+    ${BASE}/src/wasm/leb-helper.h
+    ${BASE}/src/wasm/local-decl-encoder.cc
+    ${BASE}/src/wasm/local-decl-encoder.h
+    ${BASE}/src/wasm/memory-tracing.cc
+    ${BASE}/src/wasm/memory-tracing.h
+    ${BASE}/src/wasm/module-compiler.cc
+    ${BASE}/src/wasm/module-compiler.h
+    ${BASE}/src/wasm/module-decoder.cc
+    ${BASE}/src/wasm/module-decoder.h
+    ${BASE}/src/wasm/signature-map.cc
+    ${BASE}/src/wasm/signature-map.h
+    ${BASE}/src/wasm/streaming-decoder.cc
+    ${BASE}/src/wasm/streaming-decoder.h
+    ${BASE}/src/wasm/wasm-api.cc
+    ${BASE}/src/wasm/wasm-api.h
+    ${BASE}/src/wasm/wasm-code-specialization.cc
+    ${BASE}/src/wasm/wasm-code-specialization.h
+    ${BASE}/src/wasm/wasm-code-wrapper.cc
+    ${BASE}/src/wasm/wasm-code-wrapper.h
+    ${BASE}/src/wasm/wasm-debug.cc
+    ${BASE}/src/wasm/wasm-external-refs.cc
+    ${BASE}/src/wasm/wasm-external-refs.h
+    ${BASE}/src/wasm/wasm-interpreter.cc
+    ${BASE}/src/wasm/wasm-interpreter.h
+    ${BASE}/src/wasm/wasm-heap.cc
+    ${BASE}/src/wasm/wasm-heap.h
+    ${BASE}/src/wasm/wasm-js.cc
+    ${BASE}/src/wasm/wasm-js.h
+    ${BASE}/src/wasm/wasm-limits.h
+    ${BASE}/src/wasm/wasm-memory.cc
+    ${BASE}/src/wasm/wasm-memory.h
+    ${BASE}/src/wasm/wasm-module-builder.cc
+    ${BASE}/src/wasm/wasm-module-builder.h
+    ${BASE}/src/wasm/wasm-module.cc
+    ${BASE}/src/wasm/wasm-module.h
+    ${BASE}/src/wasm/wasm-objects-inl.h
+    ${BASE}/src/wasm/wasm-objects.cc
+    ${BASE}/src/wasm/wasm-objects.h
+    ${BASE}/src/wasm/wasm-opcodes.cc
+    ${BASE}/src/wasm/wasm-opcodes.h
+    ${BASE}/src/wasm/wasm-result.cc
+    ${BASE}/src/wasm/wasm-result.h
+    ${BASE}/src/wasm/wasm-serialization.cc
+    ${BASE}/src/wasm/wasm-serialization.h
+    ${BASE}/src/wasm/wasm-text.cc
+    ${BASE}/src/wasm/wasm-text.h
+    ${BASE}/src/wasm/wasm-value.h
+    ${BASE}/src/zone/accounting-allocator.cc
+    ${BASE}/src/zone/accounting-allocator.h
+    ${BASE}/src/zone/zone-allocator.h
+    ${BASE}/src/zone/zone-chunk-list.h
+    ${BASE}/src/zone/zone-containers.h
+    ${BASE}/src/zone/zone-handle-set.h
+    ${BASE}/src/zone/zone-list-inl.h
+    ${BASE}/src/zone/zone-segment.cc
+    ${BASE}/src/zone/zone-segment.cc
+    ${BASE}/src/zone/zone-segment.h
+    ${BASE}/src/zone/zone-segment.h
+    ${BASE}/src/zone/zone.cc
+    ${BASE}/src/zone/zone.h
+    ${CMAKE_CURRENT_BINARY_DIR}/experimental-extra-libraries.cc
+    ${CMAKE_CURRENT_BINARY_DIR}/extra-libraries.cc
+    ${CMAKE_CURRENT_BINARY_DIR}/libraries.cc)
+
+# Order matters.
+set(LIBRARY_FILES
+    ${BASE}/src/js/macros.py
+    ${BASE}/src/messages.h
+    ${BASE}/src/js/prologue.js
+    ${BASE}/src/js/v8natives.js
+    ${BASE}/src/js/array.js
+    ${BASE}/src/js/typedarray.js
+    ${BASE}/src/js/messages.js
+    ${BASE}/src/js/spread.js
+    ${BASE}/src/js/proxy.js
+    ${BASE}/src/debug/mirrors.js
+    ${BASE}/src/debug/debug.js
+    ${BASE}/src/debug/liveedit.js)
+
+set(D8_SOURCES
+    ${BASE}/src/d8-console.cc
+    ${BASE}/src/d8-console.h
+    ${BASE}/src/d8.cc
+    ${BASE}/src/d8.h
+    ${CMAKE_CURRENT_BINARY_DIR}/d8-js.cc)
+
+set(D8_LIBRARY_FILES
+    ${BASE}/src/d8.js
+    ${BASE}/src/js/macros.py)
+
+if(win32)
+  set(D8_SOURCES ${D8_SOURCES} ${BASE}/src/d8-windows.cc)
+else()
+  set(D8_SOURCES ${D8_SOURCES} ${BASE}/src/d8-posix.cc)
+endif()
+
+if(arm)
+  set(DEFINES ${DEFINES} -DCAN_USE_ARMV7_INSTRUCTIONS -DV8_TARGET_ARCH_ARM)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/arm/assembler-arm-inl.h
+      ${BASE}/src/arm/assembler-arm.cc
+      ${BASE}/src/arm/assembler-arm.h
+      ${BASE}/src/arm/code-stubs-arm.cc
+      ${BASE}/src/arm/code-stubs-arm.h
+      ${BASE}/src/arm/codegen-arm.cc
+      ${BASE}/src/arm/constants-arm.cc
+      ${BASE}/src/arm/constants-arm.h
+      ${BASE}/src/arm/cpu-arm.cc
+      ${BASE}/src/arm/deoptimizer-arm.cc
+      ${BASE}/src/arm/disasm-arm.cc
+      ${BASE}/src/arm/eh-frame-arm.cc
+      ${BASE}/src/arm/frame-constants-arm.cc
+      ${BASE}/src/arm/frame-constants-arm.h
+      ${BASE}/src/arm/interface-descriptors-arm.cc
+      ${BASE}/src/arm/interface-descriptors-arm.h
+      ${BASE}/src/arm/macro-assembler-arm.cc
+      ${BASE}/src/arm/macro-assembler-arm.h
+      ${BASE}/src/arm/simulator-arm.cc
+      ${BASE}/src/arm/simulator-arm.h
+      ${BASE}/src/compiler/arm/code-generator-arm.cc
+      ${BASE}/src/compiler/arm/instruction-codes-arm.h
+      ${BASE}/src/compiler/arm/instruction-scheduler-arm.cc
+      ${BASE}/src/compiler/arm/instruction-selector-arm.cc
+      ${BASE}/src/compiler/arm/unwinding-info-writer-arm.cc
+      ${BASE}/src/compiler/arm/unwinding-info-writer-arm.h
+      ${BASE}/src/debug/arm/debug-arm.cc
+      ${BASE}/src/regexp/arm/regexp-macro-assembler-arm.cc
+      ${BASE}/src/regexp/arm/regexp-macro-assembler-arm.h
+      ${BASE}/src/wasm/baseline/arm/liftoff-assembler-arm-defs.h
+      ${BASE}/src/wasm/baseline/arm/liftoff-assembler-arm.h)
+
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/arm/builtins-arm.cc)
+elseif(arm64)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_ARM64)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/arm64/assembler-arm64-inl.h
+      ${BASE}/src/arm64/assembler-arm64.cc
+      ${BASE}/src/arm64/assembler-arm64.h
+      ${BASE}/src/arm64/code-stubs-arm64.cc
+      ${BASE}/src/arm64/code-stubs-arm64.h
+      ${BASE}/src/arm64/codegen-arm64.cc
+      ${BASE}/src/arm64/constants-arm64.h
+      ${BASE}/src/arm64/cpu-arm64.cc
+      ${BASE}/src/arm64/decoder-arm64-inl.h
+      ${BASE}/src/arm64/decoder-arm64.cc
+      ${BASE}/src/arm64/decoder-arm64.h
+      ${BASE}/src/arm64/deoptimizer-arm64.cc
+      ${BASE}/src/arm64/disasm-arm64.cc
+      ${BASE}/src/arm64/disasm-arm64.h
+      ${BASE}/src/arm64/eh-frame-arm64.cc
+      ${BASE}/src/arm64/frame-constants-arm64.cc
+      ${BASE}/src/arm64/frame-constants-arm64.h
+      ${BASE}/src/arm64/instructions-arm64-constants.cc
+      ${BASE}/src/arm64/instructions-arm64.cc
+      ${BASE}/src/arm64/instructions-arm64.h
+      ${BASE}/src/arm64/instrument-arm64.cc
+      ${BASE}/src/arm64/instrument-arm64.h
+      ${BASE}/src/arm64/interface-descriptors-arm64.cc
+      ${BASE}/src/arm64/interface-descriptors-arm64.h
+      ${BASE}/src/arm64/macro-assembler-arm64-inl.h
+      ${BASE}/src/arm64/macro-assembler-arm64.cc
+      ${BASE}/src/arm64/macro-assembler-arm64.h
+      ${BASE}/src/arm64/simulator-arm64.cc
+      ${BASE}/src/arm64/simulator-arm64.h
+      ${BASE}/src/arm64/utils-arm64.cc
+      ${BASE}/src/arm64/utils-arm64.h
+      ${BASE}/src/compiler/arm64/code-generator-arm64.cc
+      ${BASE}/src/compiler/arm64/instruction-codes-arm64.h
+      ${BASE}/src/compiler/arm64/instruction-scheduler-arm64.cc
+      ${BASE}/src/compiler/arm64/instruction-selector-arm64.cc
+      ${BASE}/src/compiler/arm64/unwinding-info-writer-arm64.cc
+      ${BASE}/src/compiler/arm64/unwinding-info-writer-arm64.h
+      ${BASE}/src/debug/arm64/debug-arm64.cc
+      ${BASE}/src/regexp/arm64/regexp-macro-assembler-arm64.cc
+      ${BASE}/src/regexp/arm64/regexp-macro-assembler-arm64.h
+      ${BASE}/src/wasm/baseline/arm64/liftoff-assembler-arm64-defs.h
+      ${BASE}/src/wasm/baseline/arm64/liftoff-assembler-arm64.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/arm64/builtins-arm64.cc)
+elseif(ia32)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_IA32)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/ia32/code-generator-ia32.cc
+      ${BASE}/src/compiler/ia32/instruction-codes-ia32.h
+      ${BASE}/src/compiler/ia32/instruction-scheduler-ia32.cc
+      ${BASE}/src/compiler/ia32/instruction-selector-ia32.cc
+      ${BASE}/src/debug/ia32/debug-ia32.cc
+      ${BASE}/src/ia32/assembler-ia32-inl.h
+      ${BASE}/src/ia32/assembler-ia32.cc
+      ${BASE}/src/ia32/assembler-ia32.h
+      ${BASE}/src/ia32/code-stubs-ia32.cc
+      ${BASE}/src/ia32/codegen-ia32.cc
+      ${BASE}/src/ia32/cpu-ia32.cc
+      ${BASE}/src/ia32/deoptimizer-ia32.cc
+      ${BASE}/src/ia32/disasm-ia32.cc
+      ${BASE}/src/ia32/frame-constants-ia32.cc
+      ${BASE}/src/ia32/frame-constants-ia32.h
+      ${BASE}/src/ia32/interface-descriptors-ia32.cc
+      ${BASE}/src/ia32/macro-assembler-ia32.cc
+      ${BASE}/src/ia32/macro-assembler-ia32.h
+      ${BASE}/src/ia32/simulator-ia32.cc
+      ${BASE}/src/ia32/simulator-ia32.h
+      ${BASE}/src/ia32/sse-intr.h
+      ${BASE}/src/regexp/ia32/regexp-macro-assembler-ia32.cc
+      ${BASE}/src/regexp/ia32/regexp-macro-assembler-ia32.h
+      ${BASE}/src/wasm/baseline/ia32/liftoff-assembler-ia32-defs.h
+      ${BASE}/src/wasm/baseline/ia32/liftoff-assembler-ia32.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/ia32/builtins-ia32.cc)
+elseif(mips OR mipsel)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_MIPS)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/mips/code-generator-mips.cc
+      ${BASE}/src/compiler/mips/instruction-codes-mips.h
+      ${BASE}/src/compiler/mips/instruction-scheduler-mips.cc
+      ${BASE}/src/compiler/mips/instruction-selector-mips.cc
+      ${BASE}/src/debug/mips/debug-mips.cc
+      ${BASE}/src/mips/assembler-mips-inl.h
+      ${BASE}/src/mips/assembler-mips.cc
+      ${BASE}/src/mips/assembler-mips.h
+      ${BASE}/src/mips/code-stubs-mips.cc
+      ${BASE}/src/mips/codegen-mips.cc
+      ${BASE}/src/mips/constants-mips.cc
+      ${BASE}/src/mips/constants-mips.h
+      ${BASE}/src/mips/cpu-mips.cc
+      ${BASE}/src/mips/deoptimizer-mips.cc
+      ${BASE}/src/mips/disasm-mips.cc
+      ${BASE}/src/mips/frame-constants-mips.cc
+      ${BASE}/src/mips/frame-constants-mips.h
+      ${BASE}/src/mips/interface-descriptors-mips.cc
+      ${BASE}/src/mips/macro-assembler-mips.cc
+      ${BASE}/src/mips/macro-assembler-mips.h
+      ${BASE}/src/mips/simulator-mips.cc
+      ${BASE}/src/mips/simulator-mips.h
+      ${BASE}/src/regexp/mips/regexp-macro-assembler-mips.cc
+      ${BASE}/src/regexp/mips/regexp-macro-assembler-mips.h
+      ${BASE}/src/wasm/baseline/mips/liftoff-assembler-mips-defs.h
+      ${BASE}/src/wasm/baseline/mips/liftoff-assembler-mips.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/mips/builtins-mips.cc)
+elseif(mips64 OR mips64el)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_MIPS64)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/mips64/code-generator-mips64.cc
+      ${BASE}/src/compiler/mips64/instruction-codes-mips64.h
+      ${BASE}/src/compiler/mips64/instruction-scheduler-mips64.cc
+      ${BASE}/src/compiler/mips64/instruction-selector-mips64.cc
+      ${BASE}/src/debug/mips64/debug-mips64.cc
+      ${BASE}/src/mips64/assembler-mips64-inl.h
+      ${BASE}/src/mips64/assembler-mips64.cc
+      ${BASE}/src/mips64/assembler-mips64.h
+      ${BASE}/src/mips64/code-stubs-mips64.cc
+      ${BASE}/src/mips64/codegen-mips64.cc
+      ${BASE}/src/mips64/constants-mips64.cc
+      ${BASE}/src/mips64/constants-mips64.h
+      ${BASE}/src/mips64/cpu-mips64.cc
+      ${BASE}/src/mips64/deoptimizer-mips64.cc
+      ${BASE}/src/mips64/disasm-mips64.cc
+      ${BASE}/src/mips64/frame-constants-mips64.cc
+      ${BASE}/src/mips64/frame-constants-mips64.h
+      ${BASE}/src/mips64/interface-descriptors-mips64.cc
+      ${BASE}/src/mips64/macro-assembler-mips64.cc
+      ${BASE}/src/mips64/macro-assembler-mips64.h
+      ${BASE}/src/mips64/simulator-mips64.cc
+      ${BASE}/src/mips64/simulator-mips64.h
+      ${BASE}/src/regexp/mips64/regexp-macro-assembler-mips64.cc
+      ${BASE}/src/regexp/mips64/regexp-macro-assembler-mips64.h
+      ${BASE}/src/wasm/baseline/mips64/liftoff-assembler-mips64-defs.h
+      ${BASE}/src/wasm/baseline/mips64/liftoff-assembler-mips64.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/mips64/builtins-mips64.cc)
+elseif(ppc OR ppc64)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_PPC)
+
+  if(ppc64)
+    set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_PPC64)
+  endif()
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/ppc/code-generator-ppc.cc
+      ${BASE}/src/compiler/ppc/instruction-codes-ppc.h
+      ${BASE}/src/compiler/ppc/instruction-scheduler-ppc.cc
+      ${BASE}/src/compiler/ppc/instruction-selector-ppc.cc
+      ${BASE}/src/debug/ppc/debug-ppc.cc
+      ${BASE}/src/ppc/assembler-ppc-inl.h
+      ${BASE}/src/ppc/assembler-ppc.cc
+      ${BASE}/src/ppc/assembler-ppc.h
+      ${BASE}/src/ppc/code-stubs-ppc.cc
+      ${BASE}/src/ppc/codegen-ppc.cc
+      ${BASE}/src/ppc/constants-ppc.cc
+      ${BASE}/src/ppc/constants-ppc.h
+      ${BASE}/src/ppc/cpu-ppc.cc
+      ${BASE}/src/ppc/deoptimizer-ppc.cc
+      ${BASE}/src/ppc/disasm-ppc.cc
+      ${BASE}/src/ppc/frame-constants-ppc.cc
+      ${BASE}/src/ppc/frame-constants-ppc.h
+      ${BASE}/src/ppc/interface-descriptors-ppc.cc
+      ${BASE}/src/ppc/macro-assembler-ppc.cc
+      ${BASE}/src/ppc/macro-assembler-ppc.h
+      ${BASE}/src/ppc/simulator-ppc.cc
+      ${BASE}/src/ppc/simulator-ppc.h
+      ${BASE}/src/regexp/ppc/regexp-macro-assembler-ppc.cc
+      ${BASE}/src/regexp/ppc/regexp-macro-assembler-ppc.h
+      ${BASE}/src/wasm/baseline/ppc/liftoff-assembler-ppc-defs.h
+      ${BASE}/src/wasm/baseline/ppc/liftoff-assembler-ppc.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/ppc/builtins-ppc.cc)
+elseif(s390 OR s390x)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_S390)
+
+  if(s390x)
+    set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_S390X)
+  endif()
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/s390/code-generator-s390.cc
+      ${BASE}/src/compiler/s390/instruction-codes-s390.h
+      ${BASE}/src/compiler/s390/instruction-scheduler-s390.cc
+      ${BASE}/src/compiler/s390/instruction-selector-s390.cc
+      ${BASE}/src/debug/s390/debug-s390.cc
+      ${BASE}/src/regexp/s390/regexp-macro-assembler-s390.cc
+      ${BASE}/src/regexp/s390/regexp-macro-assembler-s390.h
+      ${BASE}/src/s390/assembler-s390-inl.h
+      ${BASE}/src/s390/assembler-s390.cc
+      ${BASE}/src/s390/assembler-s390.h
+      ${BASE}/src/s390/code-stubs-s390.cc
+      ${BASE}/src/s390/codegen-s390.cc
+      ${BASE}/src/s390/constants-s390.cc
+      ${BASE}/src/s390/constants-s390.h
+      ${BASE}/src/s390/cpu-s390.cc
+      ${BASE}/src/s390/deoptimizer-s390.cc
+      ${BASE}/src/s390/disasm-s390.cc
+      ${BASE}/src/s390/frame-constants-s390.cc
+      ${BASE}/src/s390/frame-constants-s390.h
+      ${BASE}/src/s390/interface-descriptors-s390.cc
+      ${BASE}/src/s390/macro-assembler-s390.cc
+      ${BASE}/src/s390/macro-assembler-s390.h
+      ${BASE}/src/s390/simulator-s390.cc
+      ${BASE}/src/s390/simulator-s390.h
+      ${BASE}/src/wasm/baseline/s390/liftoff-assembler-s390-defs.h
+      ${BASE}/src/wasm/baseline/s390/liftoff-assembler-s390.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/s390/builtins-s390.cc)
+elseif(x64)
+  set(DEFINES ${DEFINES} -DV8_TARGET_ARCH_X64)
+
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/compiler/x64/code-generator-x64.cc
+      ${BASE}/src/compiler/x64/instruction-codes-x64.h
+      ${BASE}/src/compiler/x64/instruction-scheduler-x64.cc
+      ${BASE}/src/compiler/x64/instruction-selector-x64.cc
+      ${BASE}/src/compiler/x64/unwinding-info-writer-x64.cc
+      ${BASE}/src/compiler/x64/unwinding-info-writer-x64.h
+      ${BASE}/src/debug/x64/debug-x64.cc
+      ${BASE}/src/regexp/x64/regexp-macro-assembler-x64.cc
+      ${BASE}/src/regexp/x64/regexp-macro-assembler-x64.h
+      ${BASE}/src/third_party/valgrind/valgrind.h
+      ${BASE}/src/x64/assembler-x64-inl.h
+      ${BASE}/src/x64/assembler-x64.cc
+      ${BASE}/src/x64/assembler-x64.h
+      ${BASE}/src/x64/code-stubs-x64.cc
+      ${BASE}/src/x64/codegen-x64.cc
+      ${BASE}/src/x64/cpu-x64.cc
+      ${BASE}/src/x64/deoptimizer-x64.cc
+      ${BASE}/src/x64/disasm-x64.cc
+      ${BASE}/src/x64/eh-frame-x64.cc
+      ${BASE}/src/x64/frame-constants-x64.cc
+      ${BASE}/src/x64/frame-constants-x64.h
+      ${BASE}/src/x64/interface-descriptors-x64.cc
+      ${BASE}/src/x64/macro-assembler-x64.cc
+      ${BASE}/src/x64/macro-assembler-x64.h
+      ${BASE}/src/x64/simulator-x64.cc
+      ${BASE}/src/x64/simulator-x64.h
+      ${BASE}/src/x64/sse-instr.h
+      ${BASE}/src/wasm/baseline/x64/liftoff-assembler-x64-defs.h
+      ${BASE}/src/wasm/baseline/x64/liftoff-assembler-x64.h)
+
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/x64/builtins-x64.cc)
+endif()
+
+if(x64 AND linux)
+  set(SOURCES ${SOURCES} ${BASE}/src/trap-handler/handler-inside.cc)
+endif()
+
+# libv8_platform
+set(SOURCES ${SOURCES}
+    ${BASE}/include/libplatform/libplatform-export.h
+    ${BASE}/include/libplatform/libplatform.h
+    ${BASE}/include/libplatform/v8-tracing.h
+    ${BASE}/src/libplatform/default-background-task-runner.cc
+    ${BASE}/src/libplatform/default-background-task-runner.h
+    ${BASE}/src/libplatform/default-foreground-task-runner.cc
+    ${BASE}/src/libplatform/default-foreground-task-runner.h
+    ${BASE}/src/libplatform/default-platform.cc
+    ${BASE}/src/libplatform/default-platform.h
+    ${BASE}/src/libplatform/task-queue.cc
+    ${BASE}/src/libplatform/task-queue.h
+    ${BASE}/src/libplatform/tracing/trace-buffer.cc
+    ${BASE}/src/libplatform/tracing/trace-buffer.h
+    ${BASE}/src/libplatform/tracing/trace-config.cc
+    ${BASE}/src/libplatform/tracing/trace-object.cc
+    ${BASE}/src/libplatform/tracing/trace-writer.cc
+    ${BASE}/src/libplatform/tracing/trace-writer.h
+    ${BASE}/src/libplatform/tracing/tracing-controller.cc
+    ${BASE}/src/libplatform/worker-thread.cc
+    ${BASE}/src/libplatform/worker-thread.h)
+
+# libv8_sampler
+set(SOURCES ${SOURCES}
+    ${BASE}/src/libsampler/sampler.cc
+    ${BASE}/src/libsampler/sampler.h)
+
+# v8_inspector
+set(v8_inspector_generated_sources
+    ${CMAKE_CURRENT_BINARY_DIR}/include/inspector/Debugger.h
+    ${CMAKE_CURRENT_BINARY_DIR}/include/inspector/Runtime.h
+    ${CMAKE_CURRENT_BINARY_DIR}/include/inspector/Schema.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Console.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Console.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Debugger.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Debugger.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Forward.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/HeapProfiler.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/HeapProfiler.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Profiler.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Profiler.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Protocol.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Protocol.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Runtime.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Runtime.h
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Schema.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/protocol/Schema.h)
+
+set(v8_inspector_protocol_files
+    ${BASE}/third_party/inspector_protocol/lib/Allocator_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Array_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Collections_h.template
+    ${BASE}/third_party/inspector_protocol/lib/DispatcherBase_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/DispatcherBase_h.template
+    ${BASE}/third_party/inspector_protocol/lib/ErrorSupport_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/ErrorSupport_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Forward_h.template
+    ${BASE}/third_party/inspector_protocol/lib/FrontendChannel_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Maybe_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Object_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/Object_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Parser_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/Parser_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Protocol_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/ValueConversions_h.template
+    ${BASE}/third_party/inspector_protocol/lib/Values_cpp.template
+    ${BASE}/third_party/inspector_protocol/lib/Values_h.template
+    ${BASE}/third_party/inspector_protocol/templates/Exported_h.template
+    ${BASE}/third_party/inspector_protocol/templates/Imported_h.template
+    ${BASE}/third_party/inspector_protocol/templates/TypeBuilder_cpp.template
+    ${BASE}/third_party/inspector_protocol/templates/TypeBuilder_h.template)
+
+set(v8_postmortem_source_files
+    ${BASE}/src/objects-inl.h
+    ${BASE}/src/objects.h
+    ${BASE}/src/objects/code-inl.h
+    ${BASE}/src/objects/code.h
+    ${BASE}/src/objects/js-array-inl.h
+    ${BASE}/src/objects/js-array.h
+    ${BASE}/src/objects/js-regexp-inl.h
+    ${BASE}/src/objects/js-regexp.h
+    ${BASE}/src/objects/map-inl.h
+    ${BASE}/src/objects/map.h
+    ${BASE}/src/objects/script-inl.h
+    ${BASE}/src/objects/script.h
+    ${BASE}/src/objects/shared-function-info-inl.h
+    ${BASE}/src/objects/shared-function-info.h
+    ${BASE}/src/objects/string-inl.h
+    ${BASE}/src/objects/string.h)
+
+if(v8_enable_inspector)
+  set(SOURCES ${SOURCES}
+      ${BASE}/include/v8-inspector-protocol.h
+      ${BASE}/include/v8-inspector.h
+      ${BASE}/src/inspector/injected-script.cc
+      ${BASE}/src/inspector/injected-script.h
+      ${BASE}/src/inspector/inspected-context.cc
+      ${BASE}/src/inspector/inspected-context.h
+      ${BASE}/src/inspector/remote-object-id.cc
+      ${BASE}/src/inspector/remote-object-id.h
+      ${BASE}/src/inspector/search-util.cc
+      ${BASE}/src/inspector/search-util.h
+      ${BASE}/src/inspector/string-16.cc
+      ${BASE}/src/inspector/string-16.h
+      ${BASE}/src/inspector/string-util.cc
+      ${BASE}/src/inspector/string-util.h
+      ${BASE}/src/inspector/test-interface.cc
+      ${BASE}/src/inspector/test-interface.h
+      ${BASE}/src/inspector/v8-console-agent-impl.cc
+      ${BASE}/src/inspector/v8-console-agent-impl.h
+      ${BASE}/src/inspector/v8-console-message.cc
+      ${BASE}/src/inspector/v8-console-message.h
+      ${BASE}/src/inspector/v8-console.cc
+      ${BASE}/src/inspector/v8-console.h
+      ${BASE}/src/inspector/v8-debugger-agent-impl.cc
+      ${BASE}/src/inspector/v8-debugger-agent-impl.h
+      ${BASE}/src/inspector/v8-debugger-script.cc
+      ${BASE}/src/inspector/v8-debugger-script.h
+      ${BASE}/src/inspector/v8-debugger.cc
+      ${BASE}/src/inspector/v8-debugger.h
+      ${BASE}/src/inspector/v8-function-call.cc
+      ${BASE}/src/inspector/v8-function-call.h
+      ${BASE}/src/inspector/v8-heap-profiler-agent-impl.cc
+      ${BASE}/src/inspector/v8-heap-profiler-agent-impl.h
+      ${BASE}/src/inspector/v8-injected-script-host.cc
+      ${BASE}/src/inspector/v8-injected-script-host.h
+      ${BASE}/src/inspector/v8-inspector-impl.cc
+      ${BASE}/src/inspector/v8-inspector-impl.h
+      ${BASE}/src/inspector/v8-inspector-session-impl.cc
+      ${BASE}/src/inspector/v8-inspector-session-impl.h
+      ${BASE}/src/inspector/v8-internal-value-type.cc
+      ${BASE}/src/inspector/v8-internal-value-type.h
+      ${BASE}/src/inspector/v8-profiler-agent-impl.cc
+      ${BASE}/src/inspector/v8-profiler-agent-impl.h
+      ${BASE}/src/inspector/v8-regex.cc
+      ${BASE}/src/inspector/v8-regex.h
+      ${BASE}/src/inspector/v8-runtime-agent-impl.cc
+      ${BASE}/src/inspector/v8-runtime-agent-impl.h
+      ${BASE}/src/inspector/v8-schema-agent-impl.cc
+      ${BASE}/src/inspector/v8-schema-agent-impl.h
+      ${BASE}/src/inspector/v8-stack-trace-impl.cc
+      ${BASE}/src/inspector/v8-stack-trace-impl.h
+      ${BASE}/src/inspector/v8-value-utils.cc
+      ${BASE}/src/inspector/v8-value-utils.h
+      ${BASE}/src/inspector/wasm-translation.cc
+      ${BASE}/src/inspector/wasm-translation.h
+      ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/injected-script-source.h
+      ${v8_inspector_generated_sources})
+endif()
+
+if(NOT v8_enable_i18n_support EQUAL 0)
+  set(DEFINES ${DEFINES}
+      -DICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC
+      -DV8_INTL_SUPPORT)
+  set(SOURCES ${SOURCES}
+      ${BASE}/src/builtins/builtins-intl.cc
+      ${BASE}/src/builtins/builtins-intl.h
+      ${BASE}/src/char-predicates.cc
+      ${BASE}/src/intl.cc
+      ${BASE}/src/intl.h
+      ${BASE}/src/objects/intl-objects.cc
+      ${BASE}/src/objects/intl-objects.h
+      ${BASE}/src/runtime/runtime-intl.cc)
+  set(INITIALIZERS_SOURCES ${INITIALIZERS_SOURCES}
+      ${BASE}/src/builtins/builtins-intl-gen.cc)
+  set(LIBS ${LIBS} icu_common icu_i18n)
+  set(LIBRARY_FILES ${LIBRARY_FILES} ${BASE}/src/js/intl.js)
+endif()
+
+if(v8_enable_gdbjit)
+  set(DEFINES ${DEFINES} -DENABLE_GDB_JIT_INTERFACE)
+endif()
+
+if(v8_trace_maps)
+  set(DEFINES ${DEFINES} -DV8_TRACE_MAPS)
+endif()
+
+if(v8_postmortem_support)
+  # FIXME(bnoordhuis) Symbols do not show up in the final binary yet
+  # thanks to the -Wl,--as-needed link flag.
+  set(SOURCES ${SOURCES} ${CMAKE_CURRENT_BINARY_DIR}/postmortem.cc)
+endif()
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/tools/js2c.py
+        ${CMAKE_CURRENT_BINARY_DIR}/libraries.cc
+        CORE
+        ${LIBRARY_FILES}
+    DEPENDS
+        ${BASE}/tools/js2c.py
+        ${LIBRARY_FILES}
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/libraries.cc)
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/tools/js2c.py
+        ${CMAKE_CURRENT_BINARY_DIR}/d8-js.cc
+        D8
+        ${D8_LIBRARY_FILES}
+    DEPENDS
+        ${BASE}/tools/js2c.py
+        ${D8_LIBRARY_FILES}
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/d8-js.cc)
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/tools/js2c.py
+        ${CMAKE_CURRENT_BINARY_DIR}/extra-libraries.cc
+        EXTRAS
+    DEPENDS
+        ${BASE}/tools/js2c.py
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/extra-libraries.cc)
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/tools/js2c.py
+        ${CMAKE_CURRENT_BINARY_DIR}/experimental-extra-libraries.cc
+        EXPERIMENTAL_EXTRAS
+    DEPENDS
+        ${BASE}/tools/js2c.py
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/experimental-extra-libraries.cc)
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/third_party/inspector_protocol/CodeGenerator.py
+        --jinja_dir ${BASE}/third_party
+        --output_base ${CMAKE_CURRENT_BINARY_DIR}/src/inspector
+        --config ${BASE}/src/inspector/inspector_protocol_config.json
+    DEPENDS
+        ${BASE}/src/inspector/inspector_protocol_config.json
+        ${BASE}/src/inspector/js_protocol.json
+        ${BASE}/third_party/inspector_protocol/CodeGenerator.py
+        ${v8_inspector_protocol_files}
+    OUTPUT
+        ${v8_inspector_generated_sources})
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/src/inspector/build/xxd.py
+        InjectedScriptSource_js
+        ${BASE}/src/inspector/injected-script-source.js
+        ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/injected-script-source.h
+    DEPENDS
+        ${BASE}/src/inspector/build/xxd.py
+        ${BASE}/src/inspector/injected-script-source.js
+        ${CMAKE_CURRENT_BINARY_DIR}/src/inspector
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/src/inspector/injected-script-source.h)
+
+add_custom_command(
+    COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_CURRENT_BINARY_DIR}/include/inspector
+        ${CMAKE_CURRENT_BINARY_DIR}/src/inspector
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/include/inspector
+        ${CMAKE_CURRENT_BINARY_DIR}/src/inspector)
+
+add_custom_command(
+    COMMAND
+        ${PYTHON_EXECUTABLE}
+        ${BASE}/tools/gen-postmortem-metadata.py
+        ${CMAKE_CURRENT_BINARY_DIR}/postmortem.cc
+        ${v8_postmortem_source_files}
+    DEPENDS
+        ${BASE}/tools/gen-postmortem-metadata.py
+        ${v8_postmortem_source_files}
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/postmortem.cc)
+
+add_definitions(${DEFINES})
+include_directories(${BASE} ${BASE}/include ${CMAKE_CURRENT_BINARY_DIR})
+link_libraries(${LIBS})
+
+# Shared between the v8 and v8_base targets.
+set(v8_common_compile_definitions
+    PUBLIC V8_PROMISE_INTERNAL_FIELD_COUNT=${v8_promise_internal_field_count}
+    PRIVATE V8_PROMISE_INTERNAL_FIELD_COUNT=${v8_promise_internal_field_count})
+set(v8_common_include_directories PUBLIC ${BASE}/include)
+
+add_library(v8_base ${SHARED} ${SOURCES})
+target_compile_definitions(v8_base ${v8_common_compile_definitions})
+target_include_directories(v8_base ${v8_common_include_directories})
+target_link_libraries(v8_base v8_libbase)
+
+if(v8_use_snapshot)
+  add_definitions(-DV8_USE_SNAPSHOT)
+
+  add_library(v8_builtins_generators ${SHARED} ${INITIALIZERS_SOURCES})
+  target_link_libraries(v8_builtins_generators v8_base)
+
+  add_executable(
+      v8_mksnapshot
+      ${BASE}/src/setup-isolate-full.cc
+      ${BASE}/src/snapshot/mksnapshot.cc
+      ${BASE}/src/snapshot/snapshot-empty.cc)
+  target_link_libraries(v8_mksnapshot v8_base v8_builtins_generators)
+
+  add_custom_command(
+      COMMAND
+          v8_mksnapshot --startup_src ${CMAKE_CURRENT_BINARY_DIR}/snapshot.cc
+      DEPENDS
+          v8_mksnapshot
+      OUTPUT
+          ${CMAKE_CURRENT_BINARY_DIR}/snapshot.cc)
+
+  add_library(
+      v8 ${SHARED}
+      ${SOURCES}
+      ${BASE}/src/setup-isolate-deserialize.cc
+      ${CMAKE_CURRENT_BINARY_DIR}/snapshot.cc)
+else()
+  add_library(v8 ${SHARED} ${SOURCES} ${BASE}/src/snapshot/snapshot-empty.cc)
+endif()
+
+target_link_libraries(v8 v8_libbase)
+target_compile_definitions(v8 ${v8_common_compile_definitions})
+target_include_directories(v8 ${v8_common_include_directories})
+
+if(node_enable_v8_vtunejit)
+  add_library(
+      v8_vtune ${SHARED}
+      ${BASE}/src/third_party/vtune/ittnotify_config.h
+      ${BASE}/src/third_party/vtune/ittnotify_types.h
+      ${BASE}/src/third_party/vtune/jitprofiling.cc
+      ${BASE}/src/third_party/vtune/jitprofiling.h
+      ${BASE}/src/third_party/vtune/v8-vtune.h
+      ${BASE}/src/third_party/vtune/vtune-jit.cc
+      ${BASE}/src/third_party/vtune/vtune-jit.h)
+  target_link_libraries(v8_vtune v8_base)
+  target_compile_definitions(v8_vtune PUBLIC ENABLE_VTUNE_JIT_INTERFACE)
+endif()
+
+if(node_enable_d8)
+  add_executable(d8 ${D8_SOURCES})
+  target_link_libraries(d8 v8)
+endif()
+
+if(NOT MSVC)
+  set(CMAKE_CXX_FLAGS "-fno-exceptions -fno-rtti ${CMAKE_CXX_FLAGS}")
+endif()
+
+# Ensure no surprising artifacts from 80bit double math with x86.
+if(ia32)
+  if(win32)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE2")
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2 -mfpmath=sse -mmmx")
+  endif()
+endif()

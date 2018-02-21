@@ -894,6 +894,7 @@ class Context(object):
     self.workspace = workspace
     self.buildspace = buildspace
     self.verbose = verbose
+    self.vm = vm
     self.node_args = args
     self.expect_fail = expect_fail
     self.timeout = timeout
@@ -905,6 +906,9 @@ class Context(object):
     self.v8_enable_inspector = True
 
   def GetVm(self, arch, mode):
+    if not self.vm.endswith('shell'):
+      return self.vm
+
     if arch == 'none':
       name = 'out/Debug/node' if mode == 'debug' else 'out/Release/node'
     else:

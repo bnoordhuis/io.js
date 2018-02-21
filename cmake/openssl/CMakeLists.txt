@@ -1,0 +1,1218 @@
+include(../common.cmake)
+project(openssl)
+
+set(BASE ${CMAKE_SOURCE_DIR}/deps/openssl)
+
+add_definitions(-DOPENSSL_NO_COMP)
+add_definitions(-DOPENSSL_NO_HEARTBEATS)
+add_definitions(-DOPENSSL_NO_HW)
+add_definitions(-DOPENSSL_NO_SSL3)
+add_definitions(-D_REENTRANT)
+include_directories(${BASE})
+include_directories(${BASE}/openssl)
+include_directories(${BASE}/openssl/crypto)
+include_directories(${BASE}/openssl/crypto/asn1)
+include_directories(${BASE}/openssl/crypto/evp)
+include_directories(${BASE}/openssl/crypto/modes)
+include_directories(${BASE}/openssl/include)
+
+# FIXME(bnoordhuis) Derived from `python -c 'import sys; print(sys.byteorder)'`
+# which is wrong when cross-compiling.
+if(node_byteorder STREQUAL "big")
+  add_definitions(-DB_ENDIAN)
+else()
+  add_definitions(-DL_ENDIAN)
+endif()
+
+set(CRYPTO_SOURCES
+    ${BASE}/openssl/crypto/aes/aes_cfb.c
+    ${BASE}/openssl/crypto/aes/aes_ctr.c
+    ${BASE}/openssl/crypto/aes/aes_ecb.c
+    ${BASE}/openssl/crypto/aes/aes_ige.c
+    ${BASE}/openssl/crypto/aes/aes_misc.c
+    ${BASE}/openssl/crypto/aes/aes_ofb.c
+    ${BASE}/openssl/crypto/aes/aes_wrap.c
+    ${BASE}/openssl/crypto/asn1/a_bitstr.c
+    ${BASE}/openssl/crypto/asn1/a_bool.c
+    ${BASE}/openssl/crypto/asn1/a_bytes.c
+    ${BASE}/openssl/crypto/asn1/a_d2i_fp.c
+    ${BASE}/openssl/crypto/asn1/a_digest.c
+    ${BASE}/openssl/crypto/asn1/a_dup.c
+    ${BASE}/openssl/crypto/asn1/a_enum.c
+    ${BASE}/openssl/crypto/asn1/a_gentm.c
+    ${BASE}/openssl/crypto/asn1/a_i2d_fp.c
+    ${BASE}/openssl/crypto/asn1/a_int.c
+    ${BASE}/openssl/crypto/asn1/a_mbstr.c
+    ${BASE}/openssl/crypto/asn1/a_object.c
+    ${BASE}/openssl/crypto/asn1/a_octet.c
+    ${BASE}/openssl/crypto/asn1/a_print.c
+    ${BASE}/openssl/crypto/asn1/a_set.c
+    ${BASE}/openssl/crypto/asn1/a_sign.c
+    ${BASE}/openssl/crypto/asn1/a_strex.c
+    ${BASE}/openssl/crypto/asn1/a_strnid.c
+    ${BASE}/openssl/crypto/asn1/a_time.c
+    ${BASE}/openssl/crypto/asn1/a_type.c
+    ${BASE}/openssl/crypto/asn1/a_utctm.c
+    ${BASE}/openssl/crypto/asn1/a_utf8.c
+    ${BASE}/openssl/crypto/asn1/a_verify.c
+    ${BASE}/openssl/crypto/asn1/ameth_lib.c
+    ${BASE}/openssl/crypto/asn1/asn1_err.c
+    ${BASE}/openssl/crypto/asn1/asn1_gen.c
+    ${BASE}/openssl/crypto/asn1/asn1_lib.c
+    ${BASE}/openssl/crypto/asn1/asn1_par.c
+    ${BASE}/openssl/crypto/asn1/asn_mime.c
+    ${BASE}/openssl/crypto/asn1/asn_moid.c
+    ${BASE}/openssl/crypto/asn1/asn_pack.c
+    ${BASE}/openssl/crypto/asn1/bio_asn1.c
+    ${BASE}/openssl/crypto/asn1/bio_ndef.c
+    ${BASE}/openssl/crypto/asn1/d2i_pr.c
+    ${BASE}/openssl/crypto/asn1/d2i_pu.c
+    ${BASE}/openssl/crypto/asn1/evp_asn1.c
+    ${BASE}/openssl/crypto/asn1/f_enum.c
+    ${BASE}/openssl/crypto/asn1/f_int.c
+    ${BASE}/openssl/crypto/asn1/f_string.c
+    ${BASE}/openssl/crypto/asn1/i2d_pr.c
+    ${BASE}/openssl/crypto/asn1/i2d_pu.c
+    ${BASE}/openssl/crypto/asn1/n_pkey.c
+    ${BASE}/openssl/crypto/asn1/nsseq.c
+    ${BASE}/openssl/crypto/asn1/p5_pbe.c
+    ${BASE}/openssl/crypto/asn1/p5_pbev2.c
+    ${BASE}/openssl/crypto/asn1/p8_pkey.c
+    ${BASE}/openssl/crypto/asn1/t_bitst.c
+    ${BASE}/openssl/crypto/asn1/t_crl.c
+    ${BASE}/openssl/crypto/asn1/t_pkey.c
+    ${BASE}/openssl/crypto/asn1/t_req.c
+    ${BASE}/openssl/crypto/asn1/t_spki.c
+    ${BASE}/openssl/crypto/asn1/t_x509.c
+    ${BASE}/openssl/crypto/asn1/t_x509a.c
+    ${BASE}/openssl/crypto/asn1/tasn_dec.c
+    ${BASE}/openssl/crypto/asn1/tasn_enc.c
+    ${BASE}/openssl/crypto/asn1/tasn_fre.c
+    ${BASE}/openssl/crypto/asn1/tasn_new.c
+    ${BASE}/openssl/crypto/asn1/tasn_prn.c
+    ${BASE}/openssl/crypto/asn1/tasn_typ.c
+    ${BASE}/openssl/crypto/asn1/tasn_utl.c
+    ${BASE}/openssl/crypto/asn1/x_algor.c
+    ${BASE}/openssl/crypto/asn1/x_attrib.c
+    ${BASE}/openssl/crypto/asn1/x_bignum.c
+    ${BASE}/openssl/crypto/asn1/x_crl.c
+    ${BASE}/openssl/crypto/asn1/x_exten.c
+    ${BASE}/openssl/crypto/asn1/x_info.c
+    ${BASE}/openssl/crypto/asn1/x_long.c
+    ${BASE}/openssl/crypto/asn1/x_name.c
+    ${BASE}/openssl/crypto/asn1/x_nx509.c
+    ${BASE}/openssl/crypto/asn1/x_pkey.c
+    ${BASE}/openssl/crypto/asn1/x_pubkey.c
+    ${BASE}/openssl/crypto/asn1/x_req.c
+    ${BASE}/openssl/crypto/asn1/x_sig.c
+    ${BASE}/openssl/crypto/asn1/x_spki.c
+    ${BASE}/openssl/crypto/asn1/x_val.c
+    ${BASE}/openssl/crypto/asn1/x_x509.c
+    ${BASE}/openssl/crypto/asn1/x_x509a.c
+    ${BASE}/openssl/crypto/bf/bf_cfb64.c
+    ${BASE}/openssl/crypto/bf/bf_ecb.c
+    ${BASE}/openssl/crypto/bf/bf_ofb64.c
+    ${BASE}/openssl/crypto/bf/bf_skey.c
+    ${BASE}/openssl/crypto/bio/b_dump.c
+    ${BASE}/openssl/crypto/bio/b_print.c
+    ${BASE}/openssl/crypto/bio/b_sock.c
+    ${BASE}/openssl/crypto/bio/bf_buff.c
+    ${BASE}/openssl/crypto/bio/bf_nbio.c
+    ${BASE}/openssl/crypto/bio/bf_null.c
+    ${BASE}/openssl/crypto/bio/bio_cb.c
+    ${BASE}/openssl/crypto/bio/bio_err.c
+    ${BASE}/openssl/crypto/bio/bio_lib.c
+    ${BASE}/openssl/crypto/bio/bss_acpt.c
+    ${BASE}/openssl/crypto/bio/bss_bio.c
+    ${BASE}/openssl/crypto/bio/bss_conn.c
+    ${BASE}/openssl/crypto/bio/bss_dgram.c
+    ${BASE}/openssl/crypto/bio/bss_fd.c
+    ${BASE}/openssl/crypto/bio/bss_file.c
+    ${BASE}/openssl/crypto/bio/bss_log.c
+    ${BASE}/openssl/crypto/bio/bss_mem.c
+    ${BASE}/openssl/crypto/bio/bss_null.c
+    ${BASE}/openssl/crypto/bio/bss_sock.c
+    ${BASE}/openssl/crypto/bn/bn_add.c
+    ${BASE}/openssl/crypto/bn/bn_blind.c
+    ${BASE}/openssl/crypto/bn/bn_const.c
+    ${BASE}/openssl/crypto/bn/bn_ctx.c
+    ${BASE}/openssl/crypto/bn/bn_depr.c
+    ${BASE}/openssl/crypto/bn/bn_div.c
+    ${BASE}/openssl/crypto/bn/bn_err.c
+    ${BASE}/openssl/crypto/bn/bn_exp.c
+    ${BASE}/openssl/crypto/bn/bn_exp2.c
+    ${BASE}/openssl/crypto/bn/bn_gcd.c
+    ${BASE}/openssl/crypto/bn/bn_gf2m.c
+    ${BASE}/openssl/crypto/bn/bn_kron.c
+    ${BASE}/openssl/crypto/bn/bn_lib.c
+    ${BASE}/openssl/crypto/bn/bn_mod.c
+    ${BASE}/openssl/crypto/bn/bn_mont.c
+    ${BASE}/openssl/crypto/bn/bn_mpi.c
+    ${BASE}/openssl/crypto/bn/bn_mul.c
+    ${BASE}/openssl/crypto/bn/bn_nist.c
+    ${BASE}/openssl/crypto/bn/bn_prime.c
+    ${BASE}/openssl/crypto/bn/bn_print.c
+    ${BASE}/openssl/crypto/bn/bn_rand.c
+    ${BASE}/openssl/crypto/bn/bn_recp.c
+    ${BASE}/openssl/crypto/bn/bn_shift.c
+    ${BASE}/openssl/crypto/bn/bn_sqr.c
+    ${BASE}/openssl/crypto/bn/bn_sqrt.c
+    ${BASE}/openssl/crypto/bn/bn_word.c
+    ${BASE}/openssl/crypto/bn/bn_x931p.c
+    ${BASE}/openssl/crypto/buffer/buf_err.c
+    ${BASE}/openssl/crypto/buffer/buf_str.c
+    ${BASE}/openssl/crypto/buffer/buffer.c
+    ${BASE}/openssl/crypto/camellia/cmll_cfb.c
+    ${BASE}/openssl/crypto/camellia/cmll_ctr.c
+    ${BASE}/openssl/crypto/camellia/cmll_ecb.c
+    ${BASE}/openssl/crypto/camellia/cmll_ofb.c
+    ${BASE}/openssl/crypto/camellia/cmll_utl.c
+    ${BASE}/openssl/crypto/cast/c_cfb64.c
+    ${BASE}/openssl/crypto/cast/c_ecb.c
+    ${BASE}/openssl/crypto/cast/c_ofb64.c
+    ${BASE}/openssl/crypto/cast/c_skey.c
+    ${BASE}/openssl/crypto/cmac/cm_ameth.c
+    ${BASE}/openssl/crypto/cmac/cm_pmeth.c
+    ${BASE}/openssl/crypto/cmac/cmac.c
+    ${BASE}/openssl/crypto/cms/cms_asn1.c
+    ${BASE}/openssl/crypto/cms/cms_att.c
+    ${BASE}/openssl/crypto/cms/cms_cd.c
+    ${BASE}/openssl/crypto/cms/cms_dd.c
+    ${BASE}/openssl/crypto/cms/cms_enc.c
+    ${BASE}/openssl/crypto/cms/cms_env.c
+    ${BASE}/openssl/crypto/cms/cms_err.c
+    ${BASE}/openssl/crypto/cms/cms_ess.c
+    ${BASE}/openssl/crypto/cms/cms_io.c
+    ${BASE}/openssl/crypto/cms/cms_kari.c
+    ${BASE}/openssl/crypto/cms/cms_lib.c
+    ${BASE}/openssl/crypto/cms/cms_pwri.c
+    ${BASE}/openssl/crypto/cms/cms_sd.c
+    ${BASE}/openssl/crypto/cms/cms_smime.c
+    ${BASE}/openssl/crypto/conf/conf_api.c
+    ${BASE}/openssl/crypto/conf/conf_def.c
+    ${BASE}/openssl/crypto/conf/conf_err.c
+    ${BASE}/openssl/crypto/conf/conf_lib.c
+    ${BASE}/openssl/crypto/conf/conf_mall.c
+    ${BASE}/openssl/crypto/conf/conf_mod.c
+    ${BASE}/openssl/crypto/conf/conf_sap.c
+    ${BASE}/openssl/crypto/cpt_err.c
+    ${BASE}/openssl/crypto/cryptlib.c
+    ${BASE}/openssl/crypto/cversion.c
+    ${BASE}/openssl/crypto/des/cbc_cksm.c
+    ${BASE}/openssl/crypto/des/cbc_enc.c
+    ${BASE}/openssl/crypto/des/cfb64ede.c
+    ${BASE}/openssl/crypto/des/cfb64enc.c
+    ${BASE}/openssl/crypto/des/cfb_enc.c
+    ${BASE}/openssl/crypto/des/des_old.c
+    ${BASE}/openssl/crypto/des/des_old2.c
+    ${BASE}/openssl/crypto/des/ecb3_enc.c
+    ${BASE}/openssl/crypto/des/ecb_enc.c
+    ${BASE}/openssl/crypto/des/ede_cbcm_enc.c
+    ${BASE}/openssl/crypto/des/enc_read.c
+    ${BASE}/openssl/crypto/des/enc_writ.c
+    ${BASE}/openssl/crypto/des/fcrypt.c
+    ${BASE}/openssl/crypto/des/ofb64ede.c
+    ${BASE}/openssl/crypto/des/ofb64enc.c
+    ${BASE}/openssl/crypto/des/ofb_enc.c
+    ${BASE}/openssl/crypto/des/pcbc_enc.c
+    ${BASE}/openssl/crypto/des/qud_cksm.c
+    ${BASE}/openssl/crypto/des/rand_key.c
+    ${BASE}/openssl/crypto/des/read2pwd.c
+    ${BASE}/openssl/crypto/des/rpc_enc.c
+    ${BASE}/openssl/crypto/des/set_key.c
+    ${BASE}/openssl/crypto/des/str2key.c
+    ${BASE}/openssl/crypto/des/xcbc_enc.c
+    ${BASE}/openssl/crypto/dh/dh_ameth.c
+    ${BASE}/openssl/crypto/dh/dh_asn1.c
+    ${BASE}/openssl/crypto/dh/dh_check.c
+    ${BASE}/openssl/crypto/dh/dh_depr.c
+    ${BASE}/openssl/crypto/dh/dh_err.c
+    ${BASE}/openssl/crypto/dh/dh_gen.c
+    ${BASE}/openssl/crypto/dh/dh_kdf.c
+    ${BASE}/openssl/crypto/dh/dh_key.c
+    ${BASE}/openssl/crypto/dh/dh_lib.c
+    ${BASE}/openssl/crypto/dh/dh_pmeth.c
+    ${BASE}/openssl/crypto/dh/dh_prn.c
+    ${BASE}/openssl/crypto/dh/dh_rfc5114.c
+    ${BASE}/openssl/crypto/dsa/dsa_ameth.c
+    ${BASE}/openssl/crypto/dsa/dsa_asn1.c
+    ${BASE}/openssl/crypto/dsa/dsa_depr.c
+    ${BASE}/openssl/crypto/dsa/dsa_err.c
+    ${BASE}/openssl/crypto/dsa/dsa_gen.c
+    ${BASE}/openssl/crypto/dsa/dsa_key.c
+    ${BASE}/openssl/crypto/dsa/dsa_lib.c
+    ${BASE}/openssl/crypto/dsa/dsa_ossl.c
+    ${BASE}/openssl/crypto/dsa/dsa_pmeth.c
+    ${BASE}/openssl/crypto/dsa/dsa_prn.c
+    ${BASE}/openssl/crypto/dsa/dsa_sign.c
+    ${BASE}/openssl/crypto/dsa/dsa_vrf.c
+    ${BASE}/openssl/crypto/dso/dso_beos.c
+    ${BASE}/openssl/crypto/dso/dso_dl.c
+    ${BASE}/openssl/crypto/dso/dso_dlfcn.c
+    ${BASE}/openssl/crypto/dso/dso_err.c
+    ${BASE}/openssl/crypto/dso/dso_lib.c
+    ${BASE}/openssl/crypto/dso/dso_null.c
+    ${BASE}/openssl/crypto/dso/dso_openssl.c
+    ${BASE}/openssl/crypto/dso/dso_vms.c
+    ${BASE}/openssl/crypto/dso/dso_win32.c
+    ${BASE}/openssl/crypto/ebcdic.c
+    ${BASE}/openssl/crypto/ec/ec2_mult.c
+    ${BASE}/openssl/crypto/ec/ec2_oct.c
+    ${BASE}/openssl/crypto/ec/ec2_smpl.c
+    ${BASE}/openssl/crypto/ec/ec_ameth.c
+    ${BASE}/openssl/crypto/ec/ec_asn1.c
+    ${BASE}/openssl/crypto/ec/ec_check.c
+    ${BASE}/openssl/crypto/ec/ec_curve.c
+    ${BASE}/openssl/crypto/ec/ec_cvt.c
+    ${BASE}/openssl/crypto/ec/ec_err.c
+    ${BASE}/openssl/crypto/ec/ec_key.c
+    ${BASE}/openssl/crypto/ec/ec_lib.c
+    ${BASE}/openssl/crypto/ec/ec_mult.c
+    ${BASE}/openssl/crypto/ec/ec_oct.c
+    ${BASE}/openssl/crypto/ec/ec_pmeth.c
+    ${BASE}/openssl/crypto/ec/ec_print.c
+    ${BASE}/openssl/crypto/ec/eck_prn.c
+    ${BASE}/openssl/crypto/ec/ecp_mont.c
+    ${BASE}/openssl/crypto/ec/ecp_nist.c
+    ${BASE}/openssl/crypto/ec/ecp_nistp224.c
+    ${BASE}/openssl/crypto/ec/ecp_nistp256.c
+    ${BASE}/openssl/crypto/ec/ecp_nistp521.c
+    ${BASE}/openssl/crypto/ec/ecp_nistputil.c
+    ${BASE}/openssl/crypto/ec/ecp_oct.c
+    ${BASE}/openssl/crypto/ec/ecp_smpl.c
+    ${BASE}/openssl/crypto/ecdh/ech_err.c
+    ${BASE}/openssl/crypto/ecdh/ech_kdf.c
+    ${BASE}/openssl/crypto/ecdh/ech_key.c
+    ${BASE}/openssl/crypto/ecdh/ech_lib.c
+    ${BASE}/openssl/crypto/ecdh/ech_ossl.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_asn1.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_err.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_lib.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_ossl.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_sign.c
+    ${BASE}/openssl/crypto/ecdsa/ecs_vrf.c
+    ${BASE}/openssl/crypto/engine/eng_all.c
+    ${BASE}/openssl/crypto/engine/eng_cnf.c
+    ${BASE}/openssl/crypto/engine/eng_cryptodev.c
+    ${BASE}/openssl/crypto/engine/eng_ctrl.c
+    ${BASE}/openssl/crypto/engine/eng_dyn.c
+    ${BASE}/openssl/crypto/engine/eng_err.c
+    ${BASE}/openssl/crypto/engine/eng_fat.c
+    ${BASE}/openssl/crypto/engine/eng_init.c
+    ${BASE}/openssl/crypto/engine/eng_lib.c
+    ${BASE}/openssl/crypto/engine/eng_list.c
+    ${BASE}/openssl/crypto/engine/eng_openssl.c
+    ${BASE}/openssl/crypto/engine/eng_pkey.c
+    ${BASE}/openssl/crypto/engine/eng_rdrand.c
+    ${BASE}/openssl/crypto/engine/eng_table.c
+    ${BASE}/openssl/crypto/engine/tb_asnmth.c
+    ${BASE}/openssl/crypto/engine/tb_cipher.c
+    ${BASE}/openssl/crypto/engine/tb_dh.c
+    ${BASE}/openssl/crypto/engine/tb_digest.c
+    ${BASE}/openssl/crypto/engine/tb_dsa.c
+    ${BASE}/openssl/crypto/engine/tb_ecdh.c
+    ${BASE}/openssl/crypto/engine/tb_ecdsa.c
+    ${BASE}/openssl/crypto/engine/tb_pkmeth.c
+    ${BASE}/openssl/crypto/engine/tb_rand.c
+    ${BASE}/openssl/crypto/engine/tb_rsa.c
+    ${BASE}/openssl/crypto/engine/tb_store.c
+    ${BASE}/openssl/crypto/err/err.c
+    ${BASE}/openssl/crypto/err/err_all.c
+    ${BASE}/openssl/crypto/err/err_prn.c
+    ${BASE}/openssl/crypto/evp/bio_b64.c
+    ${BASE}/openssl/crypto/evp/bio_enc.c
+    ${BASE}/openssl/crypto/evp/bio_md.c
+    ${BASE}/openssl/crypto/evp/bio_ok.c
+    ${BASE}/openssl/crypto/evp/c_all.c
+    ${BASE}/openssl/crypto/evp/c_allc.c
+    ${BASE}/openssl/crypto/evp/c_alld.c
+    ${BASE}/openssl/crypto/evp/digest.c
+    ${BASE}/openssl/crypto/evp/e_aes.c
+    ${BASE}/openssl/crypto/evp/e_aes_cbc_hmac_sha1.c
+    ${BASE}/openssl/crypto/evp/e_aes_cbc_hmac_sha256.c
+    ${BASE}/openssl/crypto/evp/e_bf.c
+    ${BASE}/openssl/crypto/evp/e_camellia.c
+    ${BASE}/openssl/crypto/evp/e_cast.c
+    ${BASE}/openssl/crypto/evp/e_des.c
+    ${BASE}/openssl/crypto/evp/e_des3.c
+    ${BASE}/openssl/crypto/evp/e_idea.c
+    ${BASE}/openssl/crypto/evp/e_null.c
+    ${BASE}/openssl/crypto/evp/e_old.c
+    ${BASE}/openssl/crypto/evp/e_rc2.c
+    ${BASE}/openssl/crypto/evp/e_rc4.c
+    ${BASE}/openssl/crypto/evp/e_rc4_hmac_md5.c
+    ${BASE}/openssl/crypto/evp/e_rc5.c
+    ${BASE}/openssl/crypto/evp/e_seed.c
+    ${BASE}/openssl/crypto/evp/e_xcbc_d.c
+    ${BASE}/openssl/crypto/evp/encode.c
+    ${BASE}/openssl/crypto/evp/evp_acnf.c
+    ${BASE}/openssl/crypto/evp/evp_cnf.c
+    ${BASE}/openssl/crypto/evp/evp_enc.c
+    ${BASE}/openssl/crypto/evp/evp_err.c
+    ${BASE}/openssl/crypto/evp/evp_key.c
+    ${BASE}/openssl/crypto/evp/evp_lib.c
+    ${BASE}/openssl/crypto/evp/evp_pbe.c
+    ${BASE}/openssl/crypto/evp/evp_pkey.c
+    ${BASE}/openssl/crypto/evp/m_dss.c
+    ${BASE}/openssl/crypto/evp/m_dss1.c
+    ${BASE}/openssl/crypto/evp/m_ecdsa.c
+    ${BASE}/openssl/crypto/evp/m_md2.c
+    ${BASE}/openssl/crypto/evp/m_md4.c
+    ${BASE}/openssl/crypto/evp/m_md5.c
+    ${BASE}/openssl/crypto/evp/m_mdc2.c
+    ${BASE}/openssl/crypto/evp/m_null.c
+    ${BASE}/openssl/crypto/evp/m_ripemd.c
+    ${BASE}/openssl/crypto/evp/m_sha.c
+    ${BASE}/openssl/crypto/evp/m_sha1.c
+    ${BASE}/openssl/crypto/evp/m_sigver.c
+    ${BASE}/openssl/crypto/evp/m_wp.c
+    ${BASE}/openssl/crypto/evp/names.c
+    ${BASE}/openssl/crypto/evp/p5_crpt.c
+    ${BASE}/openssl/crypto/evp/p5_crpt2.c
+    ${BASE}/openssl/crypto/evp/p_dec.c
+    ${BASE}/openssl/crypto/evp/p_enc.c
+    ${BASE}/openssl/crypto/evp/p_lib.c
+    ${BASE}/openssl/crypto/evp/p_open.c
+    ${BASE}/openssl/crypto/evp/p_seal.c
+    ${BASE}/openssl/crypto/evp/p_sign.c
+    ${BASE}/openssl/crypto/evp/p_verify.c
+    ${BASE}/openssl/crypto/evp/pmeth_fn.c
+    ${BASE}/openssl/crypto/evp/pmeth_gn.c
+    ${BASE}/openssl/crypto/evp/pmeth_lib.c
+    ${BASE}/openssl/crypto/ex_data.c
+    ${BASE}/openssl/crypto/fips_ers.c
+    ${BASE}/openssl/crypto/hmac/hm_ameth.c
+    ${BASE}/openssl/crypto/hmac/hm_pmeth.c
+    ${BASE}/openssl/crypto/hmac/hmac.c
+    ${BASE}/openssl/crypto/idea/i_cbc.c
+    ${BASE}/openssl/crypto/idea/i_cfb64.c
+    ${BASE}/openssl/crypto/idea/i_ecb.c
+    ${BASE}/openssl/crypto/idea/i_ofb64.c
+    ${BASE}/openssl/crypto/idea/i_skey.c
+    ${BASE}/openssl/crypto/krb5/krb5_asn.c
+    ${BASE}/openssl/crypto/lhash/lh_stats.c
+    ${BASE}/openssl/crypto/lhash/lhash.c
+    ${BASE}/openssl/crypto/md4/md4_dgst.c
+    ${BASE}/openssl/crypto/md4/md4_one.c
+    ${BASE}/openssl/crypto/md5/md5_dgst.c
+    ${BASE}/openssl/crypto/md5/md5_one.c
+    ${BASE}/openssl/crypto/mdc2/mdc2_one.c
+    ${BASE}/openssl/crypto/mdc2/mdc2dgst.c
+    ${BASE}/openssl/crypto/mem.c
+    ${BASE}/openssl/crypto/mem_dbg.c
+    ${BASE}/openssl/crypto/modes/cbc128.c
+    ${BASE}/openssl/crypto/modes/ccm128.c
+    ${BASE}/openssl/crypto/modes/cfb128.c
+    ${BASE}/openssl/crypto/modes/ctr128.c
+    ${BASE}/openssl/crypto/modes/cts128.c
+    ${BASE}/openssl/crypto/modes/gcm128.c
+    ${BASE}/openssl/crypto/modes/ofb128.c
+    ${BASE}/openssl/crypto/modes/wrap128.c
+    ${BASE}/openssl/crypto/modes/xts128.c
+    ${BASE}/openssl/crypto/o_dir.c
+    ${BASE}/openssl/crypto/o_fips.c
+    ${BASE}/openssl/crypto/o_init.c
+    ${BASE}/openssl/crypto/o_str.c
+    ${BASE}/openssl/crypto/o_time.c
+    ${BASE}/openssl/crypto/objects/o_names.c
+    ${BASE}/openssl/crypto/objects/obj_dat.c
+    ${BASE}/openssl/crypto/objects/obj_err.c
+    ${BASE}/openssl/crypto/objects/obj_lib.c
+    ${BASE}/openssl/crypto/objects/obj_xref.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_asn.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_cl.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_err.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_ext.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_ht.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_lib.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_prn.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_srv.c
+    ${BASE}/openssl/crypto/ocsp/ocsp_vfy.c
+    ${BASE}/openssl/crypto/pem/pem_all.c
+    ${BASE}/openssl/crypto/pem/pem_err.c
+    ${BASE}/openssl/crypto/pem/pem_info.c
+    ${BASE}/openssl/crypto/pem/pem_lib.c
+    ${BASE}/openssl/crypto/pem/pem_oth.c
+    ${BASE}/openssl/crypto/pem/pem_pk8.c
+    ${BASE}/openssl/crypto/pem/pem_pkey.c
+    ${BASE}/openssl/crypto/pem/pem_seal.c
+    ${BASE}/openssl/crypto/pem/pem_sign.c
+    ${BASE}/openssl/crypto/pem/pem_x509.c
+    ${BASE}/openssl/crypto/pem/pem_xaux.c
+    ${BASE}/openssl/crypto/pem/pvkfmt.c
+    ${BASE}/openssl/crypto/pkcs12/p12_add.c
+    ${BASE}/openssl/crypto/pkcs12/p12_asn.c
+    ${BASE}/openssl/crypto/pkcs12/p12_attr.c
+    ${BASE}/openssl/crypto/pkcs12/p12_crpt.c
+    ${BASE}/openssl/crypto/pkcs12/p12_crt.c
+    ${BASE}/openssl/crypto/pkcs12/p12_decr.c
+    ${BASE}/openssl/crypto/pkcs12/p12_init.c
+    ${BASE}/openssl/crypto/pkcs12/p12_key.c
+    ${BASE}/openssl/crypto/pkcs12/p12_kiss.c
+    ${BASE}/openssl/crypto/pkcs12/p12_mutl.c
+    ${BASE}/openssl/crypto/pkcs12/p12_npas.c
+    ${BASE}/openssl/crypto/pkcs12/p12_p8d.c
+    ${BASE}/openssl/crypto/pkcs12/p12_p8e.c
+    ${BASE}/openssl/crypto/pkcs12/p12_utl.c
+    ${BASE}/openssl/crypto/pkcs12/pk12err.c
+    ${BASE}/openssl/crypto/pkcs7/bio_pk7.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_asn1.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_attr.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_doit.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_lib.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_mime.c
+    ${BASE}/openssl/crypto/pkcs7/pk7_smime.c
+    ${BASE}/openssl/crypto/pkcs7/pkcs7err.c
+    ${BASE}/openssl/crypto/pqueue/pqueue.c
+    ${BASE}/openssl/crypto/rand/md_rand.c
+    ${BASE}/openssl/crypto/rand/rand_egd.c
+    ${BASE}/openssl/crypto/rand/rand_err.c
+    ${BASE}/openssl/crypto/rand/rand_lib.c
+    ${BASE}/openssl/crypto/rand/rand_nw.c
+    ${BASE}/openssl/crypto/rand/rand_os2.c
+    ${BASE}/openssl/crypto/rand/rand_unix.c
+    ${BASE}/openssl/crypto/rand/rand_win.c
+    ${BASE}/openssl/crypto/rand/randfile.c
+    ${BASE}/openssl/crypto/rc2/rc2_cbc.c
+    ${BASE}/openssl/crypto/rc2/rc2_ecb.c
+    ${BASE}/openssl/crypto/rc2/rc2_skey.c
+    ${BASE}/openssl/crypto/rc2/rc2cfb64.c
+    ${BASE}/openssl/crypto/rc2/rc2ofb64.c
+    ${BASE}/openssl/crypto/rc4/rc4_utl.c
+    ${BASE}/openssl/crypto/ripemd/rmd_dgst.c
+    ${BASE}/openssl/crypto/ripemd/rmd_one.c
+    ${BASE}/openssl/crypto/rsa/rsa_ameth.c
+    ${BASE}/openssl/crypto/rsa/rsa_asn1.c
+    ${BASE}/openssl/crypto/rsa/rsa_chk.c
+    ${BASE}/openssl/crypto/rsa/rsa_crpt.c
+    ${BASE}/openssl/crypto/rsa/rsa_depr.c
+    ${BASE}/openssl/crypto/rsa/rsa_eay.c
+    ${BASE}/openssl/crypto/rsa/rsa_err.c
+    ${BASE}/openssl/crypto/rsa/rsa_gen.c
+    ${BASE}/openssl/crypto/rsa/rsa_lib.c
+    ${BASE}/openssl/crypto/rsa/rsa_none.c
+    ${BASE}/openssl/crypto/rsa/rsa_null.c
+    ${BASE}/openssl/crypto/rsa/rsa_oaep.c
+    ${BASE}/openssl/crypto/rsa/rsa_pk1.c
+    ${BASE}/openssl/crypto/rsa/rsa_pmeth.c
+    ${BASE}/openssl/crypto/rsa/rsa_prn.c
+    ${BASE}/openssl/crypto/rsa/rsa_pss.c
+    ${BASE}/openssl/crypto/rsa/rsa_saos.c
+    ${BASE}/openssl/crypto/rsa/rsa_sign.c
+    ${BASE}/openssl/crypto/rsa/rsa_ssl.c
+    ${BASE}/openssl/crypto/rsa/rsa_x931.c
+    ${BASE}/openssl/crypto/seed/seed.c
+    ${BASE}/openssl/crypto/seed/seed_cbc.c
+    ${BASE}/openssl/crypto/seed/seed_cfb.c
+    ${BASE}/openssl/crypto/seed/seed_ecb.c
+    ${BASE}/openssl/crypto/seed/seed_ofb.c
+    ${BASE}/openssl/crypto/sha/sha1_one.c
+    ${BASE}/openssl/crypto/sha/sha1dgst.c
+    ${BASE}/openssl/crypto/sha/sha256.c
+    ${BASE}/openssl/crypto/sha/sha512.c
+    ${BASE}/openssl/crypto/sha/sha_dgst.c
+    ${BASE}/openssl/crypto/sha/sha_one.c
+    ${BASE}/openssl/crypto/srp/srp_lib.c
+    ${BASE}/openssl/crypto/srp/srp_vfy.c
+    ${BASE}/openssl/crypto/stack/stack.c
+    ${BASE}/openssl/crypto/ts/ts_asn1.c
+    ${BASE}/openssl/crypto/ts/ts_conf.c
+    ${BASE}/openssl/crypto/ts/ts_err.c
+    ${BASE}/openssl/crypto/ts/ts_lib.c
+    ${BASE}/openssl/crypto/ts/ts_req_print.c
+    ${BASE}/openssl/crypto/ts/ts_req_utils.c
+    ${BASE}/openssl/crypto/ts/ts_rsp_print.c
+    ${BASE}/openssl/crypto/ts/ts_rsp_sign.c
+    ${BASE}/openssl/crypto/ts/ts_rsp_utils.c
+    ${BASE}/openssl/crypto/ts/ts_rsp_verify.c
+    ${BASE}/openssl/crypto/ts/ts_verify_ctx.c
+    ${BASE}/openssl/crypto/txt_db/txt_db.c
+    ${BASE}/openssl/crypto/ui/ui_err.c
+    ${BASE}/openssl/crypto/ui/ui_lib.c
+    ${BASE}/openssl/crypto/ui/ui_openssl.c
+    ${BASE}/openssl/crypto/ui/ui_util.c
+    ${BASE}/openssl/crypto/uid.c
+    ${BASE}/openssl/crypto/whrlpool/wp_dgst.c
+    ${BASE}/openssl/crypto/x509/by_dir.c
+    ${BASE}/openssl/crypto/x509/by_file.c
+    ${BASE}/openssl/crypto/x509/x509_att.c
+    ${BASE}/openssl/crypto/x509/x509_cmp.c
+    ${BASE}/openssl/crypto/x509/x509_d2.c
+    ${BASE}/openssl/crypto/x509/x509_def.c
+    ${BASE}/openssl/crypto/x509/x509_err.c
+    ${BASE}/openssl/crypto/x509/x509_ext.c
+    ${BASE}/openssl/crypto/x509/x509_lu.c
+    ${BASE}/openssl/crypto/x509/x509_obj.c
+    ${BASE}/openssl/crypto/x509/x509_r2x.c
+    ${BASE}/openssl/crypto/x509/x509_req.c
+    ${BASE}/openssl/crypto/x509/x509_set.c
+    ${BASE}/openssl/crypto/x509/x509_trs.c
+    ${BASE}/openssl/crypto/x509/x509_txt.c
+    ${BASE}/openssl/crypto/x509/x509_v3.c
+    ${BASE}/openssl/crypto/x509/x509_vfy.c
+    ${BASE}/openssl/crypto/x509/x509_vpm.c
+    ${BASE}/openssl/crypto/x509/x509cset.c
+    ${BASE}/openssl/crypto/x509/x509name.c
+    ${BASE}/openssl/crypto/x509/x509rset.c
+    ${BASE}/openssl/crypto/x509/x509spki.c
+    ${BASE}/openssl/crypto/x509/x509type.c
+    ${BASE}/openssl/crypto/x509/x_all.c
+    ${BASE}/openssl/crypto/x509v3/pcy_cache.c
+    ${BASE}/openssl/crypto/x509v3/pcy_data.c
+    ${BASE}/openssl/crypto/x509v3/pcy_lib.c
+    ${BASE}/openssl/crypto/x509v3/pcy_map.c
+    ${BASE}/openssl/crypto/x509v3/pcy_node.c
+    ${BASE}/openssl/crypto/x509v3/pcy_tree.c
+    ${BASE}/openssl/crypto/x509v3/v3_addr.c
+    ${BASE}/openssl/crypto/x509v3/v3_akey.c
+    ${BASE}/openssl/crypto/x509v3/v3_akeya.c
+    ${BASE}/openssl/crypto/x509v3/v3_alt.c
+    ${BASE}/openssl/crypto/x509v3/v3_asid.c
+    ${BASE}/openssl/crypto/x509v3/v3_bcons.c
+    ${BASE}/openssl/crypto/x509v3/v3_bitst.c
+    ${BASE}/openssl/crypto/x509v3/v3_conf.c
+    ${BASE}/openssl/crypto/x509v3/v3_cpols.c
+    ${BASE}/openssl/crypto/x509v3/v3_crld.c
+    ${BASE}/openssl/crypto/x509v3/v3_enum.c
+    ${BASE}/openssl/crypto/x509v3/v3_extku.c
+    ${BASE}/openssl/crypto/x509v3/v3_genn.c
+    ${BASE}/openssl/crypto/x509v3/v3_ia5.c
+    ${BASE}/openssl/crypto/x509v3/v3_info.c
+    ${BASE}/openssl/crypto/x509v3/v3_int.c
+    ${BASE}/openssl/crypto/x509v3/v3_lib.c
+    ${BASE}/openssl/crypto/x509v3/v3_ncons.c
+    ${BASE}/openssl/crypto/x509v3/v3_ocsp.c
+    ${BASE}/openssl/crypto/x509v3/v3_pci.c
+    ${BASE}/openssl/crypto/x509v3/v3_pcia.c
+    ${BASE}/openssl/crypto/x509v3/v3_pcons.c
+    ${BASE}/openssl/crypto/x509v3/v3_pku.c
+    ${BASE}/openssl/crypto/x509v3/v3_pmaps.c
+    ${BASE}/openssl/crypto/x509v3/v3_prn.c
+    ${BASE}/openssl/crypto/x509v3/v3_purp.c
+    ${BASE}/openssl/crypto/x509v3/v3_scts.c
+    ${BASE}/openssl/crypto/x509v3/v3_skey.c
+    ${BASE}/openssl/crypto/x509v3/v3_sxnet.c
+    ${BASE}/openssl/crypto/x509v3/v3_utl.c
+    ${BASE}/openssl/crypto/x509v3/v3err.c
+    ${BASE}/openssl/engines/e_4758cca.c
+    ${BASE}/openssl/engines/e_aep.c
+    ${BASE}/openssl/engines/e_atalla.c
+    ${BASE}/openssl/engines/e_capi.c
+    ${BASE}/openssl/engines/e_chil.c
+    ${BASE}/openssl/engines/e_cswift.c
+    ${BASE}/openssl/engines/e_gmp.c
+    ${BASE}/openssl/engines/e_nuron.c
+    ${BASE}/openssl/engines/e_sureware.c
+    ${BASE}/openssl/engines/e_ubsec.c)
+
+set(SSL_SOURCES
+    ${BASE}/openssl/ssl/bio_ssl.c
+    ${BASE}/openssl/ssl/d1_both.c
+    ${BASE}/openssl/ssl/d1_clnt.c
+    ${BASE}/openssl/ssl/d1_lib.c
+    ${BASE}/openssl/ssl/d1_meth.c
+    ${BASE}/openssl/ssl/d1_pkt.c
+    ${BASE}/openssl/ssl/d1_srtp.c
+    ${BASE}/openssl/ssl/d1_srvr.c
+    ${BASE}/openssl/ssl/kssl.c
+    ${BASE}/openssl/ssl/s23_clnt.c
+    ${BASE}/openssl/ssl/s23_lib.c
+    ${BASE}/openssl/ssl/s23_meth.c
+    ${BASE}/openssl/ssl/s23_pkt.c
+    ${BASE}/openssl/ssl/s23_srvr.c
+    ${BASE}/openssl/ssl/s2_clnt.c
+    ${BASE}/openssl/ssl/s2_enc.c
+    ${BASE}/openssl/ssl/s2_lib.c
+    ${BASE}/openssl/ssl/s2_meth.c
+    ${BASE}/openssl/ssl/s2_pkt.c
+    ${BASE}/openssl/ssl/s2_srvr.c
+    ${BASE}/openssl/ssl/s3_both.c
+    ${BASE}/openssl/ssl/s3_cbc.c
+    ${BASE}/openssl/ssl/s3_clnt.c
+    ${BASE}/openssl/ssl/s3_enc.c
+    ${BASE}/openssl/ssl/s3_lib.c
+    ${BASE}/openssl/ssl/s3_meth.c
+    ${BASE}/openssl/ssl/s3_pkt.c
+    ${BASE}/openssl/ssl/s3_srvr.c
+    ${BASE}/openssl/ssl/ssl_algs.c
+    ${BASE}/openssl/ssl/ssl_asn1.c
+    ${BASE}/openssl/ssl/ssl_cert.c
+    ${BASE}/openssl/ssl/ssl_ciph.c
+    ${BASE}/openssl/ssl/ssl_conf.c
+    ${BASE}/openssl/ssl/ssl_err.c
+    ${BASE}/openssl/ssl/ssl_err2.c
+    ${BASE}/openssl/ssl/ssl_lib.c
+    ${BASE}/openssl/ssl/ssl_rsa.c
+    ${BASE}/openssl/ssl/ssl_sess.c
+    ${BASE}/openssl/ssl/ssl_stat.c
+    ${BASE}/openssl/ssl/ssl_txt.c
+    ${BASE}/openssl/ssl/ssl_utst.c
+    ${BASE}/openssl/ssl/t1_clnt.c
+    ${BASE}/openssl/ssl/t1_enc.c
+    ${BASE}/openssl/ssl/t1_ext.c
+    ${BASE}/openssl/ssl/t1_lib.c
+    ${BASE}/openssl/ssl/t1_meth.c
+    ${BASE}/openssl/ssl/t1_reneg.c
+    ${BASE}/openssl/ssl/t1_srvr.c
+    ${BASE}/openssl/ssl/t1_trce.c
+    ${BASE}/openssl/ssl/tls_srp.c)
+
+set(openssl_defines_asm
+    -DAES_ASM
+    -DCPUID_ASM
+    -DOPENSSL_BN_ASM_MONT
+    -DOPENSSL_CPUID_OBJ
+    -DSHA1_ASM
+    -DSHA256_ASM
+    -DSHA512_ASM
+    -DGHASH_ASM)
+
+set(openssl_defines_arm64
+    -DOPENSSL_CPUID_OBJ
+    -DSHA1_ASM
+    -DSHA256_ASM
+    -DSHA512_ASM)
+
+set(openssl_defines_non_arm
+    -DVPAES_ASM
+    -DBN_ASM
+    -DBF_ASM
+    -DBNCO_ASM
+    -DDES_ASM
+    -DLIB_BN_ASM
+    -DMD5_ASM
+    -DOPENSSL_BN_ASM
+    -DRIP_ASM
+    -DRMD160_ASM
+    -DWHIRLPOOL_ASM
+    -DWP_ASM)
+
+set(openssl_defines_all_win
+    -DDSO_WIN32
+    -D_CRT_SECURE_NO_DEPRECATE
+    # following two defines are moved from openssconf.h
+    -DOPENSSL_NO_DYNAMIC_ENGINE
+    # to avoid build errors on Win. See openssl/engines/e_capi.c
+    -DOPENSSL_NO_CAPIENG)
+
+set(openssl_defines_all_non_win
+    -DDSO_DLFCN
+    -DHAVE_DLFCN_H)
+
+set(openssl_defines_ia32_elf
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_PART_WORDS)
+
+set(openssl_defines_ia32_mac
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_PART_WORDS)
+
+set(openssl_defines_ia32_win
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_PART_WORDS)
+
+set(openssl_defines_x64_elf
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_MONT5
+    -DOPENSSL_BN_ASM_GF2m
+    -DOPENSSL_IA32_SSE2
+    -DBSAES_ASM)
+
+set(openssl_defines_x64_mac
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_MONT5
+    -DOPENSSL_BN_ASM_GF2m
+    -DOPENSSL_IA32_SSE2
+    -DBSAES_ASM)
+
+set(openssl_defines_x64_win
+    ${openssl_defines_non_arm}
+    -DOPENSSL_BN_ASM_MONT5
+    -DOPENSSL_BN_ASM_GF2m
+    -DOPENSSL_IA32_SSE2
+    -DBSAES_ASM)
+
+set(openssl_sources_no_asm
+    ${BASE}/openssl/crypto/aes/aes_cbc.c
+    ${BASE}/openssl/crypto/aes/aes_core.c
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/bn/bn_asm.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/camellia.c
+    ${BASE}/openssl/crypto/camellia/cmll_cbc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/mem_clr.c
+    ${BASE}/openssl/crypto/rc4/rc4_enc.c
+    ${BASE}/openssl/crypto/rc4/rc4_skey.c
+    ${BASE}/openssl/crypto/whrlpool/wp_block.c)
+
+set(openssl_sources_asm_latest_ia32_elf_gas
+    ${BASE}/asm/x86-elf-gas/aes/aes-586.s
+    ${BASE}/asm/x86-elf-gas/aes/aesni-x86.s
+    ${BASE}/asm/x86-elf-gas/aes/vpaes-x86.s
+    ${BASE}/asm/x86-elf-gas/bf/bf-586.s
+    ${BASE}/asm/x86-elf-gas/bn/bn-586.s
+    ${BASE}/asm/x86-elf-gas/bn/co-586.s
+    ${BASE}/asm/x86-elf-gas/bn/x86-mont.s
+    ${BASE}/asm/x86-elf-gas/bn/x86-gf2m.s
+    ${BASE}/asm/x86-elf-gas/camellia/cmll-x86.s
+    ${BASE}/asm/x86-elf-gas/cast/cast-586.s
+    ${BASE}/asm/x86-elf-gas/des/crypt586.s
+    ${BASE}/asm/x86-elf-gas/des/des-586.s
+    ${BASE}/asm/x86-elf-gas/md5/md5-586.s
+    ${BASE}/asm/x86-elf-gas/rc4/rc4-586.s
+    ${BASE}/asm/x86-elf-gas/ripemd/rmd-586.s
+    ${BASE}/asm/x86-elf-gas/sha/sha1-586.s
+    ${BASE}/asm/x86-elf-gas/sha/sha256-586.s
+    ${BASE}/asm/x86-elf-gas/sha/sha512-586.s
+    ${BASE}/asm/x86-elf-gas/whrlpool/wp-mmx.s
+    ${BASE}/asm/x86-elf-gas/modes/ghash-x86.s
+    ${BASE}/asm/x86-elf-gas/x86cpuid.s)
+
+set(openssl_sources_asm_obsolete_ia32_elf_gas
+    ${BASE}/asm_obsolete/x86-elf-gas/aes/aes-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/aes/aesni-x86.s
+    ${BASE}/asm_obsolete/x86-elf-gas/aes/vpaes-x86.s
+    ${BASE}/asm_obsolete/x86-elf-gas/bf/bf-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/bn/bn-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/bn/co-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/bn/x86-mont.s
+    ${BASE}/asm_obsolete/x86-elf-gas/bn/x86-gf2m.s
+    ${BASE}/asm_obsolete/x86-elf-gas/camellia/cmll-x86.s
+    ${BASE}/asm_obsolete/x86-elf-gas/cast/cast-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/des/crypt586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/des/des-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/md5/md5-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/rc4/rc4-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/ripemd/rmd-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/sha/sha1-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/sha/sha256-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/sha/sha512-586.s
+    ${BASE}/asm_obsolete/x86-elf-gas/whrlpool/wp-mmx.s
+    ${BASE}/asm_obsolete/x86-elf-gas/modes/ghash-x86.s
+    ${BASE}/asm_obsolete/x86-elf-gas/x86cpuid.s)
+
+set(openssl_sources_common_ia32
+    ${BASE}/openssl/crypto/whrlpool/wp_block.c)
+
+set(openssl_sources_asm_latest_x64_elf_gas
+    ${BASE}/asm/x64-elf-gas/aes/aes-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/aesni-mb-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/aesni-sha256-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/aesni-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/vpaes-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/bsaes-x86_64.s
+    ${BASE}/asm/x64-elf-gas/aes/aesni-sha1-x86_64.s
+    ${BASE}/asm/x64-elf-gas/bn/rsaz-avx2.s
+    ${BASE}/asm/x64-elf-gas/bn/rsaz-x86_64.s
+    ${BASE}/asm/x64-elf-gas/bn/x86_64-mont.s
+    ${BASE}/asm/x64-elf-gas/bn/x86_64-mont5.s
+    ${BASE}/asm/x64-elf-gas/bn/x86_64-gf2m.s
+    ${BASE}/asm/x64-elf-gas/camellia/cmll-x86_64.s
+    ${BASE}/asm/x64-elf-gas/ec/ecp_nistz256-x86_64.s
+    ${BASE}/asm/x64-elf-gas/md5/md5-x86_64.s
+    ${BASE}/asm/x64-elf-gas/rc4/rc4-x86_64.s
+    ${BASE}/asm/x64-elf-gas/rc4/rc4-md5-x86_64.s
+    ${BASE}/asm/x64-elf-gas/sha/sha1-mb-x86_64.s
+    ${BASE}/asm/x64-elf-gas/sha/sha1-x86_64.s
+    ${BASE}/asm/x64-elf-gas/sha/sha256-mb-x86_64.s
+    ${BASE}/asm/x64-elf-gas/sha/sha256-x86_64.s
+    ${BASE}/asm/x64-elf-gas/sha/sha512-x86_64.s
+    ${BASE}/asm/x64-elf-gas/whrlpool/wp-x86_64.s
+    ${BASE}/asm/x64-elf-gas/modes/aesni-gcm-x86_64.s
+    ${BASE}/asm/x64-elf-gas/modes/ghash-x86_64.s
+    ${BASE}/asm/x64-elf-gas/x86_64cpuid.s)
+
+set(openssl_sources_asm_obsolete_x64_elf_gas
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/aes-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/aesni-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/aesni-sha256-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/aesni-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/vpaes-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/bsaes-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/aes/aesni-sha1-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/bn/rsaz-avx2.s
+    ${BASE}/asm_obsolete/x64-elf-gas/bn/rsaz-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/bn/x86_64-mont.s
+    ${BASE}/asm_obsolete/x64-elf-gas/bn/x86_64-mont5.s
+    ${BASE}/asm_obsolete/x64-elf-gas/bn/x86_64-gf2m.s
+    ${BASE}/asm_obsolete/x64-elf-gas/camellia/cmll-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/ec/ecp_nistz256-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/md5/md5-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/rc4/rc4-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/rc4/rc4-md5-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/sha/sha1-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/sha/sha1-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/sha/sha256-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/sha/sha256-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/sha/sha512-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/whrlpool/wp-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/modes/aesni-gcm-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/modes/ghash-x86_64.s
+    ${BASE}/asm_obsolete/x64-elf-gas/x86_64cpuid.s)
+
+set(openssl_sources_common_x64_elf_gas
+    # Non-generated asm
+    ${BASE}/openssl/crypto/bn/asm/x86_64-gcc.c
+    # No asm available
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/bn/rsaz_exp.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/ec/ecp_nistz256.c
+    ${BASE}/openssl/crypto/ui/ui_compat.c)
+
+set(openssl_sources_asm_latest_ia32_mac_gas
+    ${BASE}/asm/x86-macosx-gas/aes/aes-586.s
+    ${BASE}/asm/x86-macosx-gas/aes/aesni-x86.s
+    ${BASE}/asm/x86-macosx-gas/aes/vpaes-x86.s
+    ${BASE}/asm/x86-macosx-gas/bf/bf-586.s
+    ${BASE}/asm/x86-macosx-gas/bn/bn-586.s
+    ${BASE}/asm/x86-macosx-gas/bn/co-586.s
+    ${BASE}/asm/x86-macosx-gas/bn/x86-mont.s
+    ${BASE}/asm/x86-macosx-gas/bn/x86-gf2m.s
+    ${BASE}/asm/x86-macosx-gas/camellia/cmll-x86.s
+    ${BASE}/asm/x86-macosx-gas/cast/cast-586.s
+    ${BASE}/asm/x86-macosx-gas/des/crypt586.s
+    ${BASE}/asm/x86-macosx-gas/des/des-586.s
+    ${BASE}/asm/x86-macosx-gas/md5/md5-586.s
+    ${BASE}/asm/x86-macosx-gas/rc4/rc4-586.s
+    ${BASE}/asm/x86-macosx-gas/ripemd/rmd-586.s
+    ${BASE}/asm/x86-macosx-gas/sha/sha1-586.s
+    ${BASE}/asm/x86-macosx-gas/sha/sha256-586.s
+    ${BASE}/asm/x86-macosx-gas/sha/sha512-586.s
+    ${BASE}/asm/x86-macosx-gas/whrlpool/wp-mmx.s
+    ${BASE}/asm/x86-macosx-gas/modes/ghash-x86.s
+    ${BASE}/asm/x86-macosx-gas/x86cpuid.s)
+
+set(openssl_sources_asm_obsolete_ia32_mac_gas
+    ${BASE}/asm_obsolete/x86-macosx-gas/aes/aes-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/aes/aesni-x86.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/aes/vpaes-x86.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/bf/bf-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/bn/bn-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/bn/co-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/bn/x86-mont.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/bn/x86-gf2m.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/camellia/cmll-x86.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/cast/cast-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/des/crypt586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/des/des-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/md5/md5-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/rc4/rc4-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/ripemd/rmd-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/sha/sha1-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/sha/sha256-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/sha/sha512-586.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/whrlpool/wp-mmx.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/modes/ghash-x86.s
+    ${BASE}/asm_obsolete/x86-macosx-gas/x86cpuid.s)
+
+set(openssl_sources_asm_latest_x64_mac_gas
+    ${BASE}/asm/x64-macosx-gas/aes/aes-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/aesni-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/vpaes-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/aesni-mb-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/aesni-sha256-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/bsaes-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/aes/aesni-sha1-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/bn/rsaz-avx2.s
+    ${BASE}/asm/x64-macosx-gas/bn/rsaz-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/bn/x86_64-mont.s
+    ${BASE}/asm/x64-macosx-gas/bn/x86_64-mont5.s
+    ${BASE}/asm/x64-macosx-gas/bn/x86_64-gf2m.s
+    ${BASE}/asm/x64-macosx-gas/camellia/cmll-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/ec/ecp_nistz256-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/md5/md5-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/sha/sha1-mb-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/sha/sha1-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/sha/sha256-mb-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/sha/sha256-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/sha/sha512-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/whrlpool/wp-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/modes/aesni-gcm-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/modes/ghash-x86_64.s
+    ${BASE}/asm/x64-macosx-gas/x86_64cpuid.s)
+
+set(openssl_sources_asm_obsolete_x64_mac_gas
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/aes-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/aesni-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/vpaes-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/aesni-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/aesni-sha256-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/bsaes-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/aes/aesni-sha1-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/bn/rsaz-avx2.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/bn/rsaz-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/bn/x86_64-mont.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/bn/x86_64-mont5.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/bn/x86_64-gf2m.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/camellia/cmll-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/ec/ecp_nistz256-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/md5/md5-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/sha/sha1-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/sha/sha1-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/sha/sha256-mb-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/sha/sha256-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/sha/sha512-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/whrlpool/wp-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/modes/aesni-gcm-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/modes/ghash-x86_64.s
+    ${BASE}/asm_obsolete/x64-macosx-gas/x86_64cpuid.s)
+
+set(openssl_sources_common_x64_mac_gas
+    # Non-generated asm
+    ${BASE}/openssl/crypto/bn/asm/x86_64-gcc.c
+    # No asm available
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/bn/rsaz_exp.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/ec/ecp_nistz256.c
+    ${BASE}/openssl/crypto/ui/ui_compat.c
+    ${BASE}/openssl/crypto/rc4/rc4_skey.c
+    ${BASE}/openssl/crypto/rc4/rc4_enc.c)
+
+set(openssl_sources_arm_void_gas
+    ${BASE}/asm/arm-void-gas/aes/aes-armv4.S
+    ${BASE}/asm/arm-void-gas/aes/bsaes-armv7.S
+    ${BASE}/asm/arm-void-gas/aes/aesv8-armx.S
+    ${BASE}/asm/arm-void-gas/bn/armv4-mont.S
+    ${BASE}/asm/arm-void-gas/bn/armv4-gf2m.S
+    ${BASE}/asm/arm-void-gas/sha/sha1-armv4-large.S
+    ${BASE}/asm/arm-void-gas/sha/sha512-armv4.S
+    ${BASE}/asm/arm-void-gas/sha/sha256-armv4.S
+    ${BASE}/asm/arm-void-gas/modes/ghash-armv4.S
+    ${BASE}/asm/arm-void-gas/modes/ghashv8-armx.S
+    # No asm available
+    ${BASE}/openssl/crypto/aes/aes_cbc.c
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/bn/bn_asm.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/camellia.c
+    ${BASE}/openssl/crypto/camellia/cmll_cbc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/rc4/rc4_enc.c
+    ${BASE}/openssl/crypto/rc4/rc4_skey.c
+    ${BASE}/openssl/crypto/ui/ui_compat.c
+    ${BASE}/openssl/crypto/whrlpool/wp_block.c
+    # PCAP stuff
+    ${BASE}/openssl/crypto/armcap.c
+    ${BASE}/openssl/crypto/armv4cpuid.S)
+
+set(openssl_sources_arm64_linux64_gas
+    ${BASE}/asm/arm64-linux64-gas/aes/aesv8-armx.S
+    ${BASE}/asm/arm64-linux64-gas/modes/ghashv8-armx.S
+    ${BASE}/asm/arm64-linux64-gas/sha/sha1-armv8.S
+    ${BASE}/asm/arm64-linux64-gas/sha/sha256-armv8.S
+    ${BASE}/asm/arm64-linux64-gas/sha/sha512-armv8.S
+    # No asm available
+    ${BASE}/openssl/crypto/aes/aes_core.c
+    ${BASE}/openssl/crypto/aes/aes_cbc.c
+    ${BASE}/openssl/crypto/bn/bn_asm.c
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/camellia.c
+    ${BASE}/openssl/crypto/camellia/cmll_cbc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/rc4/rc4_enc.c
+    ${BASE}/openssl/crypto/rc4/rc4_skey.c
+    ${BASE}/openssl/crypto/whrlpool/wp_block.c
+    ${BASE}/openssl/crypto/mem_clr.c
+    # PCAP stuff
+    ${BASE}/openssl/crypto/armcap.c
+    ${BASE}/openssl/crypto/arm64cpuid.S)
+
+set(openssl_sources_asm_ia32_win_masm
+    ${BASE}/asm/x86-win32-masm/aes/aes-586.asm
+    ${BASE}/asm/x86-win32-masm/aes/aesni-x86.asm
+    ${BASE}/asm/x86-win32-masm/aes/vpaes-x86.asm
+    ${BASE}/asm/x86-win32-masm/bf/bf-586.asm
+    ${BASE}/asm/x86-win32-masm/bn/bn-586.asm
+    ${BASE}/asm/x86-win32-masm/bn/co-586.asm
+    ${BASE}/asm/x86-win32-masm/bn/x86-mont.asm
+    ${BASE}/asm/x86-win32-masm/bn/x86-gf2m.asm
+    ${BASE}/asm/x86-win32-masm/camellia/cmll-x86.asm
+    ${BASE}/asm/x86-win32-masm/cast/cast-586.asm
+    ${BASE}/asm/x86-win32-masm/des/crypt586.asm
+    ${BASE}/asm/x86-win32-masm/des/des-586.asm
+    ${BASE}/asm/x86-win32-masm/md5/md5-586.asm
+    ${BASE}/asm/x86-win32-masm/rc4/rc4-586.asm
+    ${BASE}/asm/x86-win32-masm/ripemd/rmd-586.asm
+    ${BASE}/asm/x86-win32-masm/sha/sha1-586.asm
+    ${BASE}/asm/x86-win32-masm/sha/sha256-586.asm
+    ${BASE}/asm/x86-win32-masm/sha/sha512-586.asm
+    ${BASE}/asm/x86-win32-masm/whrlpool/wp-mmx.asm
+    ${BASE}/asm/x86-win32-masm/modes/ghash-x86.asm
+    ${BASE}/asm/x86-win32-masm/x86cpuid.asm)
+
+set(openssl_sources_asm_latest_x64_win_masm
+    ${BASE}/asm/x64-win32-masm/aes/aes-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/aesni-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/aesni-mb-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/aesni-sha256-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/vpaes-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/bsaes-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/aes/aesni-sha1-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/bn/rsaz-avx2.asm
+    ${BASE}/asm/x64-win32-masm/bn/rsaz-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/bn/x86_64-mont.asm
+    ${BASE}/asm/x64-win32-masm/bn/x86_64-mont5.asm
+    ${BASE}/asm/x64-win32-masm/bn/x86_64-gf2m.asm
+    ${BASE}/asm/x64-win32-masm/camellia/cmll-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/ec/ecp_nistz256-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/md5/md5-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/rc4/rc4-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/rc4/rc4-md5-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/sha/sha1-mb-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/sha/sha1-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/sha/sha256-mb-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/sha/sha256-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/sha/sha512-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/whrlpool/wp-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/modes/aesni-gcm-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/modes/ghash-x86_64.asm
+    ${BASE}/asm/x64-win32-masm/x86_64cpuid.asm)
+
+set(openssl_sources_asm_obsolete_x64_win_masm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/aes-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/aesni-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/aesni-mb-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/aesni-sha256-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/vpaes-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/bsaes-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/aes/aesni-sha1-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/bn/rsaz-avx2.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/bn/rsaz-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/bn/x86_64-mont.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/bn/x86_64-mont5.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/bn/x86_64-gf2m.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/camellia/cmll-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/ec/ecp_nistz256-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/md5/md5-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/rc4/rc4-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/rc4/rc4-md5-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/sha/sha1-mb-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/sha/sha1-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/sha/sha256-mb-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/sha/sha256-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/sha/sha512-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/whrlpool/wp-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/modes/aesni-gcm-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/modes/ghash-x86_64.asm
+    ${BASE}/asm_obsolete/x64-win32-masm/x86_64cpuid.asm)
+
+set(openssl_sources_common_x64_win_masm
+    # No asm available
+    ${BASE}/openssl/crypto/bn/bn_asm.c
+    ${BASE}/openssl/crypto/bf/bf_enc.c
+    ${BASE}/openssl/crypto/bn/rsaz_exp.c
+    ${BASE}/openssl/crypto/cast/c_enc.c
+    ${BASE}/openssl/crypto/camellia/cmll_misc.c
+    ${BASE}/openssl/crypto/des/des_enc.c
+    ${BASE}/openssl/crypto/des/fcrypt_b.c
+    ${BASE}/openssl/crypto/ec/ecp_nistz256.c
+    ${BASE}/openssl/crypto/ui/ui_compat.c)
+
+set(openssl_sources_x64_win_masm
+    ${openssl_sources_common_x64_win_masm}
+    ${openssl_sources_asm_latest_x64_win_masm})
+
+set(openssl_sources_ia32_mac_gas
+    ${openssl_sources_common_ia32}
+    ${openssl_sources_asm_latest_ia32_mac_gas})
+
+set(openssl_sources_x64_mac_gas
+    ${openssl_sources_common_x64_mac_gas}
+    ${openssl_sources_asm_latest_x64_mac_gas})
+
+set(openssl_sources_ia32_elf_gas
+    ${openssl_sources_common_ia32}
+    ${openssl_sources_asm_latest_ia32_elf_gas})
+
+set(openssl_sources_x64_elf_gas
+    ${openssl_sources_common_x64_elf_gas}
+    ${openssl_sources_asm_latest_x64_elf_gas})
+
+if(NOT openssl_no_asm AND arm)
+  add_definitions(${openssl_defines_asm})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_arm_void_gas})
+elseif(NOT openssl_no_asm AND arm64)
+  add_definitions(${openssl_defines_arm64})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_arm64_linux64_gas})
+elseif(NOT openssl_no_asm AND ia32 AND mac)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_ia32_mac})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_ia32_mac_gas})
+elseif(NOT openssl_no_asm AND ia32 AND win)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_ia32_win})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_ia32_win_masm})
+elseif(NOT openssl_no_asm AND ia32)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_ia32_elf})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_ia32_elf_gas})
+elseif(NOT openssl_no_asm AND x64 AND mac)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_x64_mac})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_x64_mac_gas})
+elseif(NOT openssl_no_asm AND x64 AND win)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_x64_win})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_x64_win_masm})
+elseif(NOT openssl_no_asm AND x64)
+  add_definitions(${openssl_defines_asm} ${openssl_defines_x64_elf})
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_x64_elf_gas})
+else()
+  # openssl_no_asm in effect or no asm available for this arch/os combo.
+  add_definitions(-DOPENSSL_NO_ASM)
+  set(CRYPTO_SOURCES ${CRYPTO_SOURCES} ${openssl_sources_no_asm})
+  set(openssl_no_asm FALSE)
+endif()
+
+if(NOT openssl_no_asm)
+  enable_language(ASM)
+endif()
+
+if(win32)
+  # TODO(bnoordhuis) Use /safeseh, see commit 01fa5ee.
+  add_definitions(
+      -DDSO_WIN32
+      -DMK1MF_BUILD
+      -DOPENSSL_NO_CAPIENG
+      -DOPENSSL_NO_DYNAMIC_ENGINE
+      -DOPENSSL_SYSNAME_WIN32
+      -DWIN32_LEAN_AND_MEAN
+      -D_CRT_SECURE_NO_DEPRECATE)
+  link_libraries(ws2_32 gdi32 advapi32 crypt32 user32)
+else()
+  add_definitions(
+      -DDSO_DLFCN
+      -DENGINESDIR="/dev/null"
+      -DHAVE_DLFCN_H
+      -DTERMIOS)
+  if(mac)
+    add_definitions(-DOPENSSLDIR="/System/Library/OpenSSL/")
+  else()
+    add_definitions(-DOPENSSLDIR="/etc/ssl")
+  endif()
+endif()
+
+add_library(crypto ${SHARED} ${CRYPTO_SOURCES})
+
+if(openssl_fips)
+  target_include_directories(crypto PUBLIC ${openssl_fips}/include)
+  target_compile_definitions(crypto PUBLIC OPENSSL_FIPS)
+  add_definitions(-DOPENSSL_FIPS)
+else()
+  target_include_directories(crypto PUBLIC ${BASE}/openssl/include)
+endif()
+
+add_library(ssl ${SHARED} ${SSL_SOURCES})
+target_link_libraries(ssl crypto)
+target_include_directories(ssl PUBLIC ${BASE}/openssl/include)

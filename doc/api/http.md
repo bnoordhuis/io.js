@@ -307,7 +307,7 @@ Until the data is consumed, the `'end'` event will not fire.  Also, until
 the data is read it will consume memory that can eventually lead to a
 'process out of memory' error.
 
-*Note*: Node.js does not check whether Content-Length and the length of the
+Node.js does not check whether Content-Length and the length of the
 body which has been transmitted are equal or not.
 
 The request implements the [Writable Stream][] interface. This is an
@@ -399,6 +399,37 @@ added: v0.3.2
 Emitted when the server sends a '100 Continue' HTTP response, usually because
 the request contained 'Expect: 100-continue'. This is an instruction that
 the client should send the request body.
+
+### Event: 'information'
+<!-- YAML
+added: REPLACEME
+-->
+
+Emitted when the server sends a 1xx response (excluding 101 Upgrade). This
+event is emitted with a callback containing an object with a status code.
+
+```js
+const http = require('http');
+
+const options = {
+  hostname: '127.0.0.1',
+  port: 8080,
+  path: '/length_request'
+};
+
+// Make a request
+const req = http.request(options);
+req.end();
+
+req.on('information', (res) => {
+  console.log('got information prior to main response: ' + res.statusCode);
+});
+```
+
+101 Upgrade statuses do not fire this event due to their break from the
+traditional HTTP request/response chain, such as web sockets, in-place TLS
+upgrades, or HTTP 2.0. To be notified of 101 Upgrade notices, listen for the
+[`'upgrade'`][] event instead.
 
 ### Event: 'response'
 <!-- YAML
@@ -513,11 +544,16 @@ See [`request.socket`][]
 ### request.end([data[, encoding]][, callback])
 <!-- YAML
 added: v0.1.90
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/18780
+    description: This method now returns a reference to `ClientRequest`.
 -->
 
 * `data` {string|Buffer}
 * `encoding` {string}
 * `callback` {Function}
+* Returns: {this}
 
 Finishes sending the request. If any parts of the body are
 unsent, it will flush them to the stream. If the request is
@@ -816,7 +852,7 @@ access this event. In particular, the socket will not emit `'readable'` events
 because of how the protocol parser attaches to the socket. The `socket` can
 also be accessed at `request.connection`.
 
-*Note*: This event can also be explicitly emitted by users to inject connections
+This event can also be explicitly emitted by users to inject connections
 into the HTTP server. In that case, any [`Duplex`][] stream can be passed.
 
 ### Event: 'request'
@@ -915,7 +951,7 @@ to have timed out.
 
 A value of `0` will disable the timeout behavior on incoming connections.
 
-*Note*: The socket timeout logic is set up on connection, so changing this
+The socket timeout logic is set up on connection, so changing this
 value only affects new connections to the server, not any existing connections.
 
 ### server.keepAliveTimeout
@@ -935,8 +971,8 @@ A value of `0` will disable the keep-alive timeout behavior on incoming connecti
 A value of `0` makes the http server behave similarly to Node.js versions prior to 8.0.0,
 which did not have a keep-alive timeout.
 
-*Note*: The socket timeout logic is set up on connection, so changing this
-value only affects new connections to the server, not any existing connections.
+The socket timeout logic is set up on connection, so changing this value only
+affects new connections to the server, not any existing connections.
 
 ## Class: http.ServerResponse
 <!-- YAML
@@ -1010,11 +1046,16 @@ See [`response.socket`][].
 ### response.end([data][, encoding][, callback])
 <!-- YAML
 added: v0.1.90
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/18780
+    description: This method now returns a reference to `ServerResponse`.
 -->
 
 * `data` {string|Buffer}
 * `encoding` {string}
 * `callback` {Function}
+* Returns: {this}
 
 This method signals to the server that all of the response headers and body
 have been sent; that server should consider this message complete.
@@ -1086,7 +1127,7 @@ header-related http module methods. The keys of the returned object are the
 header names and the values are the respective header values. All header names
 are lowercase.
 
-*Note*: The object returned by the `response.getHeaders()` method _does not_
+The object returned by the `response.getHeaders()` method _does not_
 prototypically inherit from the JavaScript `Object`. This means that typical
 `Object` methods such as `obj.toString()`, `obj.hasOwnProperty()`, and others
 are not defined and *will not work*.
@@ -1305,8 +1346,8 @@ the second parameter specifies how to encode it into a byte stream.
 By default the `encoding` is `'utf8'`. `callback` will be called when this chunk
 of data is flushed.
 
-*Note*: This is the raw HTTP body and has nothing to do with
-higher-level multi-part body encodings that may be used.
+This is the raw HTTP body and has nothing to do with higher-level multi-part
+body encodings that may be used.
 
 The first time [`response.write()`][] is called, it will send the buffered
 header information and the first chunk of the body to the client. The second
@@ -1383,6 +1424,14 @@ which has been transmitted are equal or not.
 
 Attempting to set a header field name or value that contains invalid characters
 will result in a [`TypeError`][] being thrown.
+
+### response.writeProcessing()
+<!-- YAML
+added: REPLACEME
+-->
+
+Sends a HTTP/1.1 102 Processing message to the client, indicating that
+the request body should be sent.
 
 ## Class: http.IncomingMessage
 <!-- YAML
@@ -1666,6 +1715,7 @@ Found'`.
 ## http.createServer([options][, requestListener])
 <!-- YAML
 added: v0.1.13
+changes:
   - version: REPLACEME
     pr-url: https://github.com/nodejs/node/pull/15752
     description: The `options` argument is supported now.
@@ -1936,6 +1986,7 @@ not abort the request or do anything besides add a `timeout` event.
 [`'checkContinue'`]: #http_event_checkcontinue
 [`'request'`]: #http_event_request
 [`'response'`]: #http_event_response
+[`'upgrade'`]: #http_event_upgrade
 [`Agent`]: #http_class_http_agent
 [`Duplex`]: stream.html#stream_class_stream_duplex
 [`EventEmitter`]: events.html#events_class_eventemitter

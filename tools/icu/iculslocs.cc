@@ -64,7 +64,7 @@ int VERBOSE = 0;
 #define RES_INDEX "res_index"
 #define INSTALLEDLOCALES "InstalledLocales"
 
-CharString packageName;
+icu::CharString packageName;
 const char* locale = RES_INDEX;  // locale referring to our index
 
 void usage() {
@@ -105,16 +105,18 @@ void usage() {
       PROG);
 }
 
-#define ASSERT_SUCCESS(status, what)      \
-  if (U_FAILURE(*status)) {               \
-    printf("%s:%d: %s: ERROR: %s %s\n", \
-             __FILE__,                    \
-             __LINE__,                    \
-             PROG,                        \
-             u_errorName(*status),        \
-             what);                       \
-    return 1;                             \
-  }
+#define ASSERT_SUCCESS(status, ...)             \
+  do {                                          \
+    if (U_FAILURE(*status)) {                   \
+      fprintf(stderr, "%s:%d: ERROR: %s ",      \
+               __FILE__,                        \
+               __LINE__,                        \
+               u_errorName(*status));           \
+      fprintf(stderr, __VA_ARGS__);             \
+      fprintf(stderr, "\n");                    \
+      return 1;                                 \
+    }                                           \
+  } while (0)
 
 /**
  * @param status changed from reference to pointer to match node.js style
@@ -147,7 +149,7 @@ int localeExists(const char* loc, UBool* exists) {
   if (VERBOSE > 1) {
     printf("Trying to open %s:%s\n", packageName.data(), loc);
   }
-  LocalUResourceBundlePointer aResource(
+  icu::LocalUResourceBundlePointer aResource(
       ures_openDirect(packageName.data(), loc, &status));
   *exists = FALSE;
   if (U_SUCCESS(status)) {
@@ -167,12 +169,12 @@ int localeExists(const char* loc, UBool* exists) {
     return 0;  // "good" failure
   } else {
     // some other failure..
-    printf("%s:%d: %s: ERROR %s opening %s for test.\n",
-           __FILE__,
-           __LINE__,
-           u_errorName(status),
-           packageName.data(),
-           loc);
+    fprintf(stderr, "%s:%d: %s: ERROR %s opening %s for test.\n",
+            __FILE__,
+            __LINE__,
+            u_errorName(status),
+            packageName.data(),
+            loc);
     return 1;  // abort
   }
 }
@@ -189,11 +191,11 @@ void printIndent(FILE* bf, int indent) {
  * @return 0 for OK, 1 for err
  */
 int dumpAllButInstalledLocales(int lev,
-                               LocalUResourceBundlePointer* bund,
+                               icu::LocalUResourceBundlePointer* bund,
                                FILE* bf,
                                UErrorCode* status) {
   ures_resetIterator(bund->getAlias());
-  LocalUResourceBundlePointer t;
+  icu::LocalUResourceBundlePointer t;
   while (U_SUCCESS(*status) && ures_hasNext(bund->getAlias())) {
     t.adoptInstead(ures_getNextResource(bund->getAlias(), t.orphan(), status));
     ASSERT_SUCCESS(status, "while processing table");
@@ -218,7 +220,8 @@ int dumpAllButInstalledLocales(int lev,
           fprintf(bf, "\"}");
         } break;
         default: {
-          printf("ERROR: unhandled type in dumpAllButInstalledLocales().\n");
+          fprintf(stderr,
+                  "ERROR: unhandled type in dumpAllButInstalledLocales().\n");
           return 1;
         } break;
       }
@@ -239,7 +242,7 @@ int list(const char* toBundle) {
     }
     bf = fopen(toBundle, "wb");
     if (bf == NULL) {  // NOLINT (readability/null_usage)
-      printf("ERROR: Could not open '%s' for writing.\n", toBundle);
+      fprintf(stderr, "ERROR: Could not open '%s' for writing.\n", toBundle);
       return 1;
     }
     fprintf(bf, "\xEF\xBB\xBF");  // write UTF-8 BOM
@@ -254,10 +257,10 @@ int list(const char* toBundle) {
     printf("\"locale\": %s\n", locale);
   }
 
-  LocalUResourceBundlePointer bund(
+  icu::LocalUResourceBundlePointer bund(
       ures_openDirect(packageName.data(), locale, &status));
-  ASSERT_SUCCESS(&status, "while opening the bundle");
-  LocalUResourceBundlePointer installedLocales(
+  ASSERT_SUCCESS(&status, "while opening bundle %s", packageName.data());
+  icu::LocalUResourceBundlePointer installedLocales(
       // NOLINTNEXTLINE (readability/null_usage)
       ures_getByKey(bund.getAlias(), INSTALLEDLOCALES, NULL, &status));
   ASSERT_SUCCESS(&status, "while fetching installed locales");
@@ -280,7 +283,7 @@ int list(const char* toBundle) {
             "    // First, everything besides InstalledLocales:\n",
             locale);
     if (dumpAllButInstalledLocales(0, &bund, bf, &status)) {
-      printf("Error dumping prolog for %s\n", toBundle);
+      fprintf(stderr, "Error dumping prolog for %s\n", toBundle);
       fclose(bf);
       return 1;
     }
@@ -295,7 +298,7 @@ int list(const char* toBundle) {
   }
 
   // OK, now list them.
-  LocalUResourceBundlePointer subkey;
+  icu::LocalUResourceBundlePointer subkey;
 
   int validCount = 0;
   for (int32_t i = 0; i < count; i++) {
@@ -349,7 +352,7 @@ int main(int argc, const char* argv[]) {
       VERBOSE++;
     } else if (!strcmp(arg, "-i") && (argsLeft >= 1)) {
       if (i != 1) {
-        printf("ERROR: -i must be the first argument given.\n");
+        fprintf(stderr, "ERROR: -i must be the first argument given.\n");
         usage();
         return 1;
       }
@@ -380,7 +383,7 @@ int main(int argc, const char* argv[]) {
         return 1;
       }
     } else {
-      printf("Unknown or malformed option: %s\n", arg);
+      fprintf(stderr, "Unknown or malformed option: %s\n", arg);
       usage();
       return 1;
     }

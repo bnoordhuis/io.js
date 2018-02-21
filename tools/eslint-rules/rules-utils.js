@@ -8,8 +8,19 @@
  * require calls.
  */
 module.exports.isRequired = function(node, modules) {
-  return node.callee.name === 'require' &&
+  return node.callee.name === 'require' && node.arguments.length !== 0 &&
     modules.includes(node.arguments[0].value);
+};
+
+/**
+* Return true if common module is required
+* in AST Node under inspection
+*/
+var commonModuleRegExp = new RegExp(/^(\.\.\/)*common(\.js)?$/);
+module.exports.isCommonModule = function(node) {
+  return node.callee.name === 'require' &&
+         node.arguments.length !== 0 &&
+         commonModuleRegExp.test(node.arguments[0].value);
 };
 
 /**

@@ -62,7 +62,7 @@ class FSReqBase : public ReqWrap<uv_fs_t> {
 
  private:
   enum encoding encoding_ = UTF8;
-  const char* syscall_;
+  const char* syscall_ = nullptr;
 
   const char* data_ = nullptr;
   MaybeStackBuffer<char> buffer_;
@@ -152,8 +152,8 @@ class FileHandle : public AsyncWrap {
     }
     ~CloseReq() {
       uv_fs_req_cleanup(req());
-      promise_.Empty();
-      ref_.Empty();
+      promise_.Reset();
+      ref_.Reset();
     }
 
     FileHandle* file_handle();

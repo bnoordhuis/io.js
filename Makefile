@@ -2,10 +2,12 @@
 
 BUILDTYPE ?= Release
 PYTHON ?= python
+NINJA ?= ninja
 DESTDIR ?=
 SIGN ?=
 PREFIX ?= /usr/local
 FLAKY_TESTS ?= run
+INSTALL_ARGS ?=
 TEST_CI_ARGS ?=
 STAGINGSERVER ?= node-www
 LOGLEVEL ?= silent
@@ -15,6 +17,11 @@ GTEST_FILTER ?= "*"
 GNUMAKEFLAGS += --no-print-directory
 GCOV ?= gcov
 PWD = $(CURDIR)
+
+ifdef CMAKE
+  INSTALL_ARGS += --cmake
+  TEST_CI_ARGS += --shell=out.cmake/cmake/node/node
+endif
 
 ifdef JOBS
   PARALLEL_ARGS = -j $(JOBS)
@@ -64,10 +71,18 @@ V ?= 1
 .PHONY: all
 # BUILDTYPE=Debug builds both release and debug builds. If you want to compile
 # just the debug build, run `make -C out BUILDTYPE=Debug` instead.
+ifdef CMAKE
+ifeq ($(BUILDTYPE),Release)
+all: $(NODE_EXE)
+else
+all: $(NODE_EXE) $(NODE_G_EXE)
+endif
+else
 ifeq ($(BUILDTYPE),Release)
 all: out/Makefile $(NODE_EXE) ## Default target, builds node in out/Release/node.
 else
 all: out/Makefile $(NODE_EXE) $(NODE_G_EXE)
+endif
 endif
 
 .PHONY: help
@@ -86,6 +101,22 @@ help: ## Print help for targets with comments.
 # Without the check there is a race condition between the link being deleted
 # and recreated which can break the addons build when running test-ci
 # See comments on the build-addons target for some more info
+ifdef CMAKE
+$(NODE_EXE):
+	@if [ ! -f out.cmake/build.ninja ] || \
+	   [ out.cmake/Makefile -nt out.cmake/build.ninja ]; then \
+		$(MAKE) -C out.cmake VERBOSE=$(V); \
+	else \
+		if [ -z "$(V)" ]; then \
+			$(NINJA) -C out.cmake; \
+		else \
+			$(NINJA) -v -C out.cmake; \
+		fi \
+	fi
+	@if [ ! -r $@ -o ! -L $@ ]; then \
+		ln -fs out.cmake/cmake/node/$(NODE_EXE) $@; \
+	fi
+else
 $(NODE_EXE): config.gypi out/Makefile
 	$(MAKE) -C out BUILDTYPE=Release V=$(V)
 	if [ ! -r $@ -o ! -L $@ ]; then ln -fs out/Release/$(NODE_EXE) $@; fi
@@ -102,6 +133,7 @@ out/Makefile: common.gypi deps/uv/uv.gyp deps/http_parser/http_parser.gyp \
 
 config.gypi: configure
 	$(error Missing or stale $@, please run ./$<)
+endif
 
 .PHONY: install
 install: all ## Installs node into $PREFIX (default=/usr/local).
@@ -263,19 +295,19 @@ test-cov: all
 	$(MAKE) build-addons
 	$(MAKE) build-addons-napi
 	# $(MAKE) cctest
-	$(PYTHON) tools/test.py --mode=release -J \
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release -J \
 		$(CI_JS_SUITES) \
 		$(CI_NATIVE_SUITES)
 	$(MAKE) lint
 
 test-parallel: all
-	$(PYTHON) tools/test.py --mode=release parallel -J
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release parallel -J
 
 test-valgrind: all
-	$(PYTHON) tools/test.py --mode=release --valgrind sequential parallel message
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release --valgrind sequential parallel message
 
 test-check-deopts: all
-	$(PYTHON) tools/test.py --mode=release --check-deopts parallel sequential -J
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release --check-deopts parallel sequential -J
 
 benchmark/misc/function_call/build/Release/binding.node: all \
 		benchmark/misc/function_call/binding.cc \
@@ -398,7 +430,7 @@ clear-stalled:
 
 .PHONY: test-gc
 test-gc: all test/gc/build/Release/binding.node
-	$(PYTHON) tools/test.py --mode=release gc
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release gc
 
 .PHONY: test-gc-clean
 test-gc-clean:
@@ -410,10 +442,10 @@ test-build-addons-napi: all build-addons-napi
 
 .PHONY: test-all
 test-all: test-build test/gc/build/Release/binding.node ## Run everything in test/.
-	$(PYTHON) tools/test.py --mode=debug,release
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=debug,release
 
 test-all-valgrind: test-build
-	$(PYTHON) tools/test.py --mode=debug,release --valgrind
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=debug,release --valgrind
 
 CI_NATIVE_SUITES ?= addons addons-napi
 CI_JS_SUITES ?= default
@@ -475,29 +507,32 @@ run-ci: build-ci
 	$(MAKE) test-ci
 
 test-release: test-build
-	$(PYTHON) tools/test.py --mode=release
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release
 
 test-debug: test-build
-	$(PYTHON) tools/test.py --mode=debug
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=debug
 
 test-message: test-build
-	$(PYTHON) tools/test.py message
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) message
 
 test-simple: | cctest  # Depends on 'all'.
-	$(PYTHON) tools/test.py parallel sequential
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) parallel sequential
 
 test-pummel: all
-	$(PYTHON) tools/test.py pummel
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) pummel
 
 test-internet: all
-	$(PYTHON) tools/test.py internet
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) internet
+
+test-debugger: all
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) debugger
 
 test-node-inspect: $(NODE_EXE)
 	USE_EMBEDDED_NODE_INSPECT=1 $(NODE) tools/test-npm-package \
 		--install deps/node-inspect test
 
 test-tick-processor: all
-	$(PYTHON) tools/test.py tick-processor
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) tick-processor
 
 .PHONY: test-hash-seed
 # Verifies the hash seed used by V8 for hashing is random.
@@ -507,10 +542,10 @@ test-hash-seed: all
 .PHONY: test-doc
 test-doc: doc-only ## Builds, lints, and verifies the docs.
 	$(MAKE) lint
-	$(PYTHON) tools/test.py $(CI_DOC)
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) $(CI_DOC)
 
 test-known-issues: all
-	$(PYTHON) tools/test.py known_issues
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) known_issues
 
 # Related CI job: node-test-npm
 test-npm: $(NODE_EXE) ## Run the npm test suite on deps/npm.
@@ -521,7 +556,7 @@ test-npm-publish: $(NODE_EXE)
 
 .PHONY: test-addons-napi
 test-addons-napi: test-build-addons-napi
-	$(PYTHON) tools/test.py --mode=release addons-napi
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release addons-napi
 
 .PHONY: test-addons-napi-clean
 test-addons-napi-clean:
@@ -530,7 +565,7 @@ test-addons-napi-clean:
 
 .PHONY: test-addons
 test-addons: test-build test-addons-napi
-	$(PYTHON) tools/test.py --mode=release addons
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release addons
 
 .PHONY: test-addons-clean
 test-addons-clean:
@@ -541,19 +576,20 @@ test-addons-clean:
 
 test-timers:
 	$(MAKE) --directory=tools faketime
-	$(PYTHON) tools/test.py --mode=release timers
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release timers
 
 test-timers-clean:
 	$(MAKE) --directory=tools clean
 
 test-async-hooks:
-	$(PYTHON) tools/test.py --mode=release async-hooks
+	$(PYTHON) tools/test.py $(TEST_CI_ARGS) --mode=release async-hooks
 
 test-with-async-hooks:
 	$(MAKE) build-addons
 	$(MAKE) build-addons-napi
 	$(MAKE) cctest
-	NODE_TEST_WITH_ASYNC_HOOKS=1 $(PYTHON) tools/test.py --mode=release -J \
+	NODE_TEST_WITH_ASYNC_HOOKS=1 $(PYTHON) tools/test.py \
+		$(TEST_CI_ARGS) --mode=release -J \
 		$(CI_JS_SUITES) \
 		$(CI_NATIVE_SUITES)
 
@@ -619,7 +655,7 @@ doc-only: $(apidoc_dirs) $(apiassets)  ## Builds the docs with the local or the 
 	if [ ! -d doc/api/assets ]; then \
 		$(MAKE) tools/doc/node_modules/js-yaml/package.json; \
 	fi;
-	@$(MAKE) -s $(apidocs_html) $(apidocs_json)
+	@$(MAKE) $(apidocs_html) $(apidocs_json)
 
 .PHONY: doc
 doc: $(NODE_EXE) doc-only
@@ -979,7 +1015,7 @@ $(TARBALL)-headers: release-only
 		--tag=$(TAG) \
 		--release-urlbase=$(RELEASE_URLBASE) \
 		$(CONFIG_FLAGS) $(BUILD_RELEASE_FLAGS)
-	HEADERS_ONLY=1 $(PYTHON) tools/install.py install '$(TARNAME)' '/'
+	HEADERS_ONLY=1 $(PYTHON) tools/install.py $(INSTALL_ARGS) install '$(TARNAME)' '/'
 	find $(TARNAME)/ -type l | xargs $(RM)
 	tar -cf $(TARNAME)-headers.tar $(TARNAME)
 	$(RM) -r $(TARNAME)
@@ -1101,7 +1137,7 @@ endif
 LINT_JS_TARGETS = benchmark doc lib test tools
 
 run-lint-js = tools/node_modules/eslint/bin/eslint.js --cache \
-	--rulesdir=tools/eslint-rules --ext=.js,.mjs,.md $(LINT_JS_TARGETS)
+	--ext=.js,.mjs,.md $(LINT_JS_TARGETS) --ignore-pattern '!.eslintrc.js'
 run-lint-js-fix = $(run-lint-js) --fix
 
 .PHONY: lint-js-fix

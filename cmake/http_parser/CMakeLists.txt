@@ -1,0 +1,7 @@
+include(../common.cmake)
+project(http_parser)
+set(BASE ${CMAKE_SOURCE_DIR}/deps/http_parser)
+add_library(http_parser ${SHARED} ${BASE}/http_parser.c ${BASE}/http_parser.h)
+target_compile_definitions(http_parser PRIVATE HTTP_PARSER_STRICT=0)
+target_include_directories(http_parser PRIVATE ${BASE})
+target_include_directories(http_parser PUBLIC ${BASE})
