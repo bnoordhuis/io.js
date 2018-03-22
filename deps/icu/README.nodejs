@@ -1,0 +1,19 @@
+This document is intended for Node.js maintainers that want to upgrade the
+bundled copy if ICU.
+
+Steps:
+
+1. Download the icu4c tarball from http://site.icu-project.org/download/
+
+2. Untar to deps/icu
+
+3. Rename deps/icu/source/data/in/icudt??l.dat to deps/icu/icudata.dat
+
+4. Delete everything in deps/icu/source except the common and i18n directories
+   and the tools/icupkg and tools/toolutil directories.
+
+5. Update the source lists in deps/icu/icu.gyp if necessary
+
+6. Run `./configure && make -j8 test` to check if everything still works
+
+7. Commit and open a pull request; don't forget to run the V8 integration CI

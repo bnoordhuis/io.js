@@ -51,11 +51,6 @@ NODE ?= ./$(NODE_EXE)
 NODE_G_EXE = node_g$(EXEEXT)
 NPM ?= ./deps/npm/bin/npm-cli.js
 
-# Flags for packaging.
-BUILD_DOWNLOAD_FLAGS ?= --download=all
-BUILD_INTL_FLAGS ?= --with-intl=small-icu
-BUILD_RELEASE_FLAGS ?= $(BUILD_DOWNLOAD_FLAGS) $(BUILD_INTL_FLAGS)
-
 # Default to verbose builds.
 # To do quiet/pretty builds, run `make V=` to set V to an empty string,
 # or set the V environment variable to an empty string.
@@ -117,7 +112,6 @@ clean: ## Remove build artifacts.
 		out/$(BUILDTYPE)/node.exp
 	@if [ -d out ]; then find out/ -name '*.o' -o -name '*.a' -o -name '*.d' | xargs $(RM) -r; fi
 	$(RM) -r node_modules
-	@if [ -d deps/icu ]; then echo deleting deps/icu; $(RM) -r deps/icu; fi
 	$(RM) test.tap
 	# Next one is legacy remove this at some point
 	$(RM) -r test/tmp*
@@ -127,12 +121,10 @@ clean: ## Remove build artifacts.
 .PHONY: distclean
 distclean:
 	$(RM) -r out
-	$(RM) config.gypi icu_config.gypi config_fips.gypi
+	$(RM) config.gypi config_fips.gypi
 	$(RM) config.mk
 	$(RM) -r $(NODE_EXE) $(NODE_G_EXE)
 	$(RM) -r node_modules
-	$(RM) -r deps/icu
-	$(RM) -r deps/icu4c*.tgz deps/icu4c*.zip deps/icu-tmp
 	$(RM) $(BINARYTAR).* $(TARBALL).*
 	$(RM) -r deps/v8/testing/gmock
 
@@ -872,7 +864,7 @@ $(PKG): release-only
 		--dest-cpu=x64 \
 		--tag=$(TAG) \
 		--release-urlbase=$(RELEASE_URLBASE) \
-		$(CONFIG_FLAGS) $(BUILD_RELEASE_FLAGS)
+		$(CONFIG_FLAGS)
 	$(MAKE) install V=$(V) DESTDIR=$(MACOSOUTDIR)/dist/node
 	SIGN="$(CODESIGN_CERT)" PKGDIR="$(MACOSOUTDIR)/dist/node/usr/local" bash \
 		tools/osx-codesign.sh
@@ -978,7 +970,7 @@ $(TARBALL)-headers: release-only
 		--dest-cpu=$(DESTCPU) \
 		--tag=$(TAG) \
 		--release-urlbase=$(RELEASE_URLBASE) \
-		$(CONFIG_FLAGS) $(BUILD_RELEASE_FLAGS)
+		$(CONFIG_FLAGS)
 	HEADERS_ONLY=1 $(PYTHON) tools/install.py install '$(TARNAME)' '/'
 	find $(TARNAME)/ -type l | xargs $(RM)
 	tar -cf $(TARNAME)-headers.tar $(TARNAME)
@@ -1010,7 +1002,7 @@ $(BINARYTAR): release-only
 		--dest-cpu=$(DESTCPU) \
 		--tag=$(TAG) \
 		--release-urlbase=$(RELEASE_URLBASE) \
-		$(CONFIG_FLAGS) $(BUILD_RELEASE_FLAGS)
+		$(CONFIG_FLAGS)
 	$(MAKE) install DESTDIR=$(BINARYNAME) V=$(V) PORTABLE=1
 	cp README.md $(BINARYNAME)
 	cp LICENSE $(BINARYNAME)
@@ -1080,7 +1072,7 @@ tools/.docmdlintstamp: $(LINT_MD_DOC_FILES)
 	@$(call available-node,$(run-lint-doc-md))
 	@touch $@
 
-LINT_MD_TARGETS = src lib benchmark tools/doc tools/icu
+LINT_MD_TARGETS = src lib benchmark tools/doc
 LINT_MD_ROOT_DOCS := $(wildcard *.md)
 LINT_MD_MISC_FILES := $(shell find $(LINT_MD_TARGETS) -type f \
   -not -path '*node_modules*' -name '*.md') $(LINT_MD_ROOT_DOCS)
@@ -1156,8 +1148,6 @@ LINT_CPP_FILES = $(filter-out $(LINT_CPP_EXCLUDE), $(wildcard \
 	test/addons-napi/*/*.cc \
 	test/addons-napi/*/*.h \
 	test/gc/binding.cc \
-	tools/icu/*.cc \
-	tools/icu/*.h \
 	))
 
 # Code blocks don't have newline at the end,

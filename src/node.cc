@@ -3527,7 +3527,6 @@ static void PrintHelp() {
 #if defined(NODE_HAVE_I18N_SUPPORT)
          "  --icu-data-dir=dir         set ICU data load path to dir\n"
          "                             (overrides NODE_ICU_DATA)\n"
-#if !defined(NODE_HAVE_SMALL_ICU)
          "                             note: linked-in ICU data is present\n"
 #endif
          "  --preserve-symlinks        preserve symbolic links when resolving\n"
@@ -3535,7 +3534,6 @@ static void PrintHelp() {
          "                             and caching modules\n"
          "  --experimental-vm-modules  experimental ES Module support\n"
          "                             in vm module\n"
-#endif
          "\n"
          "Environment variables:\n"
          "NODE_DEBUG                   ','-separated list of core modules\n"
@@ -3545,9 +3543,7 @@ static void PrintHelp() {
          "                             file\n"
 #if defined(NODE_HAVE_I18N_SUPPORT)
          "NODE_ICU_DATA                data path for ICU (Intl object) data\n"
-#if !defined(NODE_HAVE_SMALL_ICU)
          "                             (will extend linked-in data)\n"
-#endif
 #endif
          "NODE_NO_WARNINGS             set to 1 to silence process warnings\n"
 #if !defined(NODE_WITHOUT_NODE_OPTIONS)
@@ -4276,7 +4272,7 @@ void Init(int* argc,
   if (icu_data_dir.empty())
     SafeGetenv("NODE_ICU_DATA", &icu_data_dir);
   // Initialize ICU.
-  // If icu_data_dir is empty here, it will load the 'minimal' data.
+  // If icu_data_dir is empty here, it will load the built-in data.
   if (!i18n::InitializeICUDirectory(icu_data_dir)) {
     fprintf(stderr,
             "%s: could not initialize ICU "
