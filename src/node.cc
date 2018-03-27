@@ -168,7 +168,6 @@ static uv_async_t dispatch_debug_messages_async;
 
 static Mutex node_isolate_mutex;
 static v8::Isolate* node_isolate;
-static v8::Platform* default_platform;
 
 #ifdef __POSIX__
 static uv_sem_t debug_semaphore;
