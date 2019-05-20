@@ -36,9 +36,9 @@ module_path, module_filename = os.path.split(os.path.realpath(__file__))
 
 def read_config():
     # pylint: disable=W0703
-    def json_to_object(data, output_base, config_base):
+    def json_to_object(data, output_base):
         def json_object_hook(object_dict):
-            items = [(k, os.path.join(config_base, v) if k == "path" else v) for (k, v) in object_dict.items()]
+            items = [(k, os.path.join(output_base, v) if k == "path" else v) for (k, v) in object_dict.items()]
             items = [(k, os.path.join(output_base, v) if k == "output" else v) for (k, v) in items]
             keys, values = list(zip(*items))
             return collections.namedtuple('X', keys)(*values)
@@ -69,7 +69,6 @@ def read_config():
         jinja_dir = arg_options.jinja_dir
         output_base = arg_options.output_base
         config_file = arg_options.config
-        config_base = os.path.dirname(config_file)
         config_values = arg_options.config_value
     except Exception:
         # Work with python 2 and 3 http://docs.python.org/py3k/howto/pyporting.html
@@ -80,7 +79,7 @@ def read_config():
     try:
         config_json_file = open(config_file, "r")
         config_json_string = config_json_file.read()
-        config_partial = json_to_object(config_json_string, output_base, config_base)
+        config_partial = json_to_object(config_json_string, output_base)
         config_json_file.close()
         defaults = {
             ".use_snake_file_names": False,
