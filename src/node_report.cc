@@ -1,7 +1,9 @@
 #include "env-inl.h"
+#include "heap_utils.h"
 #include "node_report.h"
 #include "debug_utils.h"
 #include "diagnosticfilename-inl.h"
+#include "memory_tracker-inl.h"
 #include "node_internals.h"
 #include "node_metadata.h"
 #include "util.h"
@@ -24,13 +26,15 @@ constexpr int NANOS_PER_SEC = 1000 * 1000 * 1000;
 constexpr double SEC_PER_MICROS = 1e-6;
 
 namespace report {
-using node::arraysize;
 using node::DiagnosticFilename;
 using node::Environment;
+using node::MemoryTracker;
 using node::Mutex;
 using node::NativeSymbolDebuggingContext;
 using node::PerIsolateOptions;
 using node::TIME_TYPE;
+using node::arraysize;
+using node::heap::JSGraph;
 using v8::HeapSpaceStatistics;
 using v8::HeapStatistics;
 using v8::Isolate;
@@ -57,6 +61,7 @@ static void PrintJavaScriptStack(JSONWriter* writer,
 static void PrintNativeStack(JSONWriter* writer);
 static void PrintResourceUsage(JSONWriter* writer);
 static void PrintGCStatistics(JSONWriter* writer, Isolate* isolate);
+static void PrintMemoryRetainers(JSONWriter* writer, Environment* env);
 static void PrintSystemInformation(JSONWriter* writer);
 static void PrintLoadedLibraries(JSONWriter* writer);
 static void PrintComponentVersions(JSONWriter* writer);
@@ -240,6 +245,9 @@ static void WriteNodeReport(Isolate* isolate,
 
   // Report V8 Heap and Garbage Collector information
   PrintGCStatistics(&writer, isolate);
+
+  // Report the largest memory retainers
+  PrintMemoryRetainers(&writer, env);
 
   // Report OS and current thread resource usage
   PrintResourceUsage(&writer);
@@ -490,6 +498,54 @@ static void PrintGCStatistics(JSONWriter* writer, Isolate* isolate) {
 
   writer->json_objectend();
   writer->json_objectend();
+}
+
+// Report the largest memory retainers.
+static void PrintMemoryRetainers(JSONWriter* writer, Environment* env) {
+  JSGraph graph(env->isolate());
+  MemoryTracker tracker(env->isolate(), &graph);
+  tracker.Track(env);
+  struct Counter {
+    size_t size = 0;
+    size_t count = 0;
+    std::string name;
+  };
+  std::vector<Counter> vec;
+  {
+    std::map<std::string, Counter> map;
+    for (auto const& node : graph.nodes()) {
+      if (0 == node->SizeInBytes()) continue;  // JS node, uninteresting.
+      auto& e = map[node->Name()];
+      e.size += node->SizeInBytes();
+      e.count++;
+    }
+    for (auto const& e : map) {
+      Counter counter = e.second;
+      counter.name = e.first;
+      vec.push_back(counter);
+    }
+  }
+  // Sort by count first, size second, name third.
+  // Sort count and size in reverse order, sort name lexicographically.
+  std::sort(vec.begin(), vec.end(), [](const Counter& a, const Counter& b) {
+    if (a.count < b.count) return false;
+    if (a.count > b.count) return true;
+    if (a.size < b.size) return false;
+    if (a.size > b.size) return true;
+    return a.name < b.name;
+  });
+  constexpr size_t N = 10;  // Display this many retainers.
+  if (vec.size() > N) vec.resize(N);
+  writer->json_arraystart("memoryRetainers");
+  for (auto const& e : vec) {
+    writer->json_start();
+    writer->json_keyvalue("name", e.name);
+    writer->json_keyvalue("count", e.count);
+    writer->json_keyvalue("size", e.size);
+    writer->json_keyvalue("retainedSize", 0);  // TODO(bnoordhuis)
+    writer->json_end();
+  }
+  writer->json_arrayend();
 }
 
 static void PrintResourceUsage(JSONWriter* writer) {
